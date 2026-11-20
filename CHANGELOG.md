@@ -6,7 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Karaoke caption layout and highlighting (milestone 5)**
+  - Pages are now packed against the estimated glyph width and the safe area
+    (`width - safe_left - safe_right`), capped at two lines and 3-4 words per
+    default `hormozi` page, so long lines no longer run off the frame.
+  - ASS `\t` transform times are written in milliseconds relative to the
+    Dialogue start (the old centisecond values made highlights fire for 8 ms).
+    The active colour is held for the whole word with an 80 ms scale pop;
+    `\k`/`\kf` remain centiseconds, as libass specifies.
+  - Cumulative ASS override tags are reset per word, so highlighting one word
+    no longer paints every following word in the line.
+  - Added a pixel-level ffmpeg e2e test that burns a black video, samples raw
+    RGB frames at every word midpoint and checks both the highlight colour and
+    the left/right 2% safe-area edges.
 
 ## [0.1.0] — 2026-11-20
 

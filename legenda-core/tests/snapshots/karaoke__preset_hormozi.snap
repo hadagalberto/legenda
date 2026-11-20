@@ -14,6 +14,6 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Karaoke,DejaVu Sans,92,&H00FFFFFF&,&H00000000&,&H00000000&,&H80000000&,-1,0,0,0,100,100,0,0,1,6,0,2,80,80,420,1
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,00:00:00.00,00:00:01.02,Karaoke,,0,0,0,,{\pos(540,1500)}{\t(0,8,\c&H0000E5FF&\fscx115\fscy115)\t(8,16,\c&H00FFFFFF&\fscx100\fscy100)}HEY, {\t(34,42,\c&H0000E5FF&\fscx115\fscy115)\t(42,50,\c&H00FFFFFF&\fscx100\fscy100)}THIS {\t(70,78,\c&H0000E5FF&\fscx115\fscy115)\t(78,86,\c&H00FFFFFF&\fscx100\fscy100)}IS
-Dialogue: 0,00:00:02.20,00:00:02.90,Karaoke,,0,0,0,,{\pos(540,1500)}{\t(0,8,\c&H0000E5FF&\fscx115\fscy115)\t(8,16,\c&H00FFFFFF&\fscx100\fscy100)}AMAZING.
-Dialogue: 0,00:00:02.90,00:00:03.06,Karaoke,,0,0,0,,{\pos(540,1500)}{\t(0,8,\c&H0000E5FF&\fscx115\fscy115)\t(8,16,\c&H00FFFFFF&\fscx100\fscy100)}🔥
+Dialogue: 0,00:00:00.00,00:00:01.02,Karaoke,,0,0,0,,{\pos(540,1500)}{\c&H00FFFFFF&\fscx100\fscy100\t(0,1,\c&H0000E5FF&)\t(0,80,\fscx115\fscy115)\t(80,160,\fscx100\fscy100)\t(320,321,\c&H00FFFFFF&)}HEY, {\c&H00FFFFFF&\fscx100\fscy100\t(340,341,\c&H0000E5FF&)\t(340,420,\fscx115\fscy115)\t(420,500,\fscx100\fscy100)\t(700,701,\c&H00FFFFFF&)}THIS {\c&H00FFFFFF&\fscx100\fscy100\t(700,701,\c&H0000E5FF&)\t(700,780,\fscx115\fscy115)\t(780,860,\fscx100\fscy100)\t(1020,1021,\c&H00FFFFFF&)}IS
+Dialogue: 0,00:00:02.20,00:00:02.90,Karaoke,,0,0,0,,{\pos(540,1500)}{\c&H00FFFFFF&\fscx100\fscy100\t(0,1,\c&H0000E5FF&)\t(0,80,\fscx115\fscy115)\t(80,160,\fscx100\fscy100)\t(700,701,\c&H00FFFFFF&)}AMAZING.
+Dialogue: 0,00:00:02.90,00:00:03.06,Karaoke,,0,0,0,,{\pos(540,1500)}{\c&H00FFFFFF&\fscx100\fscy100\t(0,1,\c&H0000E5FF&)\t(0,80,\fscx115\fscy115)\t(80,160,\fscx100\fscy100)\t(156,157,\c&H00FFFFFF&)}🔥

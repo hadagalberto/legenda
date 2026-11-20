@@ -1,7 +1,7 @@
 //! Word-level transcript, page grouping and karaoke rendering tests.
 
 use legenda_core::ass;
-use legenda_core::karaoke::{render, KaraokeOptions, KaraokePreset};
+use legenda_core::karaoke::{estimate_text_width, render, KaraokeOptions, KaraokePreset};
 use legenda_core::time::Time;
 use legenda_core::transcript::{
     group_pages, parse_transcript, PageOptions, TranscriptFormat, Word,
@@ -27,6 +27,29 @@ const WHISPERX: &str = r#"{
       ]
     }
   ]
+}"#;
+
+/// The maintainer's reproduction: 14 words, starts 380 ms apart.
+const REPRO: &str = r#"{
+  "segments": [{
+    "start": 0.0, "end": 5.3,
+    "words": [
+      {"word": "Hoje", "start": 0.00, "end": 0.34},
+      {"word": "eu", "start": 0.38, "end": 0.72},
+      {"word": "vou", "start": 0.76, "end": 1.10},
+      {"word": "te", "start": 1.14, "end": 1.48},
+      {"word": "mostrar", "start": 1.52, "end": 1.86},
+      {"word": "o", "start": 1.90, "end": 2.24},
+      {"word": "segredo", "start": 2.28, "end": 2.62},
+      {"word": "que", "start": 2.66, "end": 3.00},
+      {"word": "ninguém", "start": 3.04, "end": 3.38},
+      {"word": "conta", "start": 3.42, "end": 3.76},
+      {"word": "sobre", "start": 3.80, "end": 4.14},
+      {"word": "edição", "start": 4.18, "end": 4.52},
+      {"word": "de", "start": 4.56, "end": 4.90},
+      {"word": "vídeo", "start": 4.94, "end": 5.28}
+    ]
+  }]
 }"#;
 
 const WHISPER_CPP: &str = r#"{
@@ -328,4 +351,81 @@ fn override_markup_is_escaped_and_emoji_passes_through() {
     assert!(text.contains("｛\\b1｝"));
     assert!(!text.contains("{\\b1}"));
     assert!(text.contains("👋"));
+}
+
+fn strip_ass_tags(text: &str) -> String {
+    let mut output = String::new();
+    let mut in_tag = false;
+    for character in text.chars() {
+        match character {
+            '{' => in_tag = true,
+            '}' => in_tag = false,
+            _ if !in_tag => output.push(character),
+            _ => {}
+        }
+    }
+    output
+}
+
+fn dialogue_lines(text: &str) -> Vec<Vec<String>> {
+    ass::parse(text)
+        .unwrap()
+        .dialogues()
+        .into_iter()
+        .map(|(format, event)| {
+            strip_ass_tags(event.text(format).unwrap()).split("\\N").map(str::to_owned).collect()
+        })
+        .collect()
+}
+
+#[test]
+fn every_generated_line_fits_the_safe_width() {
+    let transcript = parse_transcript(REPRO).unwrap();
+    assert_eq!(transcript.words.len(), 14);
+    let options = KaraokeOptions::new(KaraokePreset::Hormozi);
+    let safe_width = f64::from(options.width - options.safe_area.left - options.safe_area.right);
+    let text = ass::write(&render(&transcript.words, &options).unwrap()).unwrap();
+    let pages = dialogue_lines(&text);
+
+    assert!(pages.len() >= 4, "expected several pages, got {}", pages.len());
+    assert!(pages.iter().any(|lines| lines.len() == 2), "expected at least one two-line page");
+    for lines in &pages {
+        assert!((1..=2).contains(&lines.len()), "page has {} lines", lines.len());
+        let words: usize = lines.iter().map(|line| line.split_whitespace().count()).sum();
+        assert!((1..=4).contains(&words), "page has {words} words: {lines:?}");
+        for line in lines {
+            let width =
+                estimate_text_width(line, options.font_size, options.preset.uppercases_text());
+            assert!(width <= safe_width, "line {line:?} is {width}px > {safe_width}px");
+        }
+    }
+}
+
+#[test]
+fn transform_times_are_milliseconds_and_k_is_centiseconds() {
+    let transcript = parse_transcript(WHISPERX).unwrap();
+    let render_preset = |preset| {
+        ass::write(&render(&transcript.words, &KaraokeOptions::new(preset)).unwrap()).unwrap()
+    };
+
+    // First word: 0-320 ms. The highlight must be held across that whole
+    // window, not fire in centiseconds during the first 16 ms.
+    let hormozi = render_preset(KaraokePreset::Hormozi);
+    assert!(hormozi.contains("\\t(0,1,\\"), "instant highlight-on at 0 ms");
+    assert!(hormozi.contains("\\t(320,321,\\"), "highlight released at 320 ms");
+    assert!(hormozi.contains("\\t(0,80,\\fscx115"), "80 ms pop-in");
+    assert!(hormozi.contains("\\t(80,160,\\fscx100"), "scale back after 160 ms");
+
+    let clean = render_preset(KaraokePreset::Clean);
+    assert!(clean.contains("\\t(0,1,\\"), "clean reveal starts at 0 ms");
+    assert!(clean.contains("\\t(320,321,\\"), "clean reveal ends at 320 ms");
+
+    let bounce = render_preset(KaraokePreset::Bounce);
+    assert!(bounce.contains("\\t(0,80,\\fscx135"), "bounce pop-in uses milliseconds");
+    assert!(bounce.contains("\\t(320,321,\\"), "bounce highlight released at 320 ms");
+
+    // \kf/\k are the one place where centiseconds are correct.
+    let karaoke = render_preset(KaraokePreset::Karaoke);
+    assert!(karaoke.contains("\\k32"), "first word is 32 centiseconds");
+    assert!(karaoke.contains("\\t(0,80,\\fscx108"), "karaoke pop-in uses milliseconds");
 }

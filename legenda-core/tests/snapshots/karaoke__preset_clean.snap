@@ -14,6 +14,6 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Karaoke,DejaVu Sans,76,&H40FFFFFF&,&H00FFFFFF&,&H00000000&,&H80000000&,0,0,0,0,100,100,0,0,3,2,1,2,80,80,420,1
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,00:00:00.00,00:00:01.02,Karaoke,,0,0,0,,{\pos(540,1500)}{\t(0,10,\alpha&H00&)}Hey, {\t(34,44,\alpha&H00&)}this {\t(70,80,\alpha&H00&)}is
-Dialogue: 0,00:00:02.20,00:00:02.90,Karaoke,,0,0,0,,{\pos(540,1500)}{\t(0,10,\alpha&H00&)}amazing.
-Dialogue: 0,00:00:02.90,00:00:03.06,Karaoke,,0,0,0,,{\pos(540,1500)}{\t(0,10,\alpha&H00&)}🔥
+Dialogue: 0,00:00:00.00,00:00:01.02,Karaoke,,0,0,0,,{\pos(540,1500)}{\c&H40FFFFFF&\alpha&H40&\t(0,1,\alpha&H00&)\t(320,321,\alpha&H40&)}Hey, {\c&H40FFFFFF&\alpha&H40&\t(340,341,\alpha&H00&)\t(700,701,\alpha&H40&)}this {\c&H40FFFFFF&\alpha&H40&\t(700,701,\alpha&H00&)\t(1020,1021,\alpha&H40&)}is
+Dialogue: 0,00:00:02.20,00:00:02.90,Karaoke,,0,0,0,,{\pos(540,1500)}{\c&H40FFFFFF&\alpha&H40&\t(0,1,\alpha&H00&)\t(700,701,\alpha&H40&)}amazing.
+Dialogue: 0,00:00:02.90,00:00:03.06,Karaoke,,0,0,0,,{\pos(540,1500)}{\c&H40FFFFFF&\alpha&H40&\t(0,1,\alpha&H00&)\t(156,157,\alpha&H40&)}🔥
