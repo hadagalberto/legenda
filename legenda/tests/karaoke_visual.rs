@@ -12,6 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use legenda_core::ass;
 
+mod common;
+
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 const WIDTH: usize = 1_080;
@@ -110,6 +112,9 @@ fn words_on_line_at(ass_text: &str, seconds: f64) -> usize {
 
 #[test]
 fn burned_frames_show_highlights_and_respect_the_safe_area() {
+    if !common::libass_available() {
+        return;
+    }
     let directory = temp_dir("visual");
     let video = directory.join("input.mp4");
     let transcript = directory.join("transcript.json");

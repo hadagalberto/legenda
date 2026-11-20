@@ -509,6 +509,10 @@ fn execute() -> Result<i32> {
             if let Some(ffmpeg) = ffmpeg {
                 options.ffmpeg = ffmpeg;
             }
+            // Probe once up front: a build without libass fails deep inside
+            // the filtergraph with exit 8 ("Filter not found"), which is both
+            // late and cryptic. Fail fast with installation instructions.
+            burn::ensure_libass(&options.ffmpeg)?;
             // Keep the invocation alive until ffmpeg exits: it owns the
             // temporary, safely named copy of the caption file.
             let invocation = burn::build_args(&video, &captions, &output, &options)?;

@@ -8,6 +8,30 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Maintainer fix pass (milestone 7)**
+  - `legenda burn` now probes `ffmpeg -hide_banner -filters` before spawning
+    ffmpeg and fails fast with actionable, per-OS libass install instructions
+    when neither the `subtitles` nor the `ass` filter exists, instead of
+    surfacing ffmpeg's exit 8 `Filter not found` on macOS.
+  - Probe parsing is unit-tested with known-valid and adversarial listings:
+    descriptions and lookalike filter names no longer count as libass support.
+  - macOS CI installs the keg-only `ffmpeg-full` formula (which includes
+    libass) ahead of the default ffmpeg on `PATH`; a dedicated workflow step
+    verifies the filters on every OS and fails the job loudly if absent. Burn
+    e2e tests never skip in CI; locally they skip with a printed reason only
+    when the probe proves libass is missing.
+  - README/README.pt-BR install notes explain how to check for and install a
+    libass-enabled ffmpeg on Linux, macOS and Windows.
+- **Maintainer fix pass (milestone 6)**
+  - `legenda burn` no longer puts user caption paths in the ffmpeg
+    filtergraph. The ASS file is copied to a uniquely named ASCII-only
+    temporary file and referenced with `subtitles=filename=...`, so commas,
+    brackets, semicolons, apostrophes, spaces, accents and drive letters can
+    no longer break two-level filtergraph escaping (the macOS CI failure).
+    Video and output paths remain verbatim argv elements.
+  - Consecutive karaoke pages closer than 300 ms (`--page-gap-ms`) are now
+    extended to the next page's start, removing the caption blink between
+    pages produced by width-aware layout splitting.
 - **Karaoke caption layout and highlighting (milestone 5)**
   - Pages are now packed against the estimated glyph width and the safe area
     (`width - safe_left - safe_right`), capped at two lines and 3-4 words per
@@ -21,19 +45,6 @@ All notable changes to this project are documented here. The format follows
   - Added a pixel-level ffmpeg e2e test that burns a black video, samples raw
     RGB frames at every word midpoint and checks both the highlight colour and
     the left/right 2% safe-area edges.
-
-### Fixed
-
-- **Maintainer fix pass (milestone 6)**
-  - `legenda burn` no longer puts user caption paths in the ffmpeg
-    filtergraph. The ASS file is copied to a uniquely named ASCII-only
-    temporary file and referenced with `subtitles=filename=...`, so commas,
-    brackets, semicolons, apostrophes, spaces, accents and drive letters can
-    no longer break two-level filtergraph escaping (the macOS CI failure).
-    Video and output paths remain verbatim argv elements.
-  - Consecutive karaoke pages closer than 300 ms (`--page-gap-ms`) are now
-    extended to the next page's start, removing the caption blink between
-    pages produced by width-aware layout splitting.
 
 ## [0.1.0] — 2026-11-20
 

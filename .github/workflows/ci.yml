@@ -30,13 +30,32 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Install ffmpeg (macOS)
+      - name: Install ffmpeg with libass (macOS)
         if: runner.os == 'macOS'
-        run: brew install ffmpeg
+        shell: bash
+        run: |
+          # Homebrew core's ffmpeg is built without libass, so it has neither
+          # the 'subtitles' nor the 'ass' filter. ffmpeg-full includes libass
+          # but is keg-only: prepend its bin directory so later steps resolve
+          # both `ffmpeg` and `ffprobe` to that build.
+          brew install ffmpeg-full
+          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
 
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
+
+      - name: Verify ffmpeg can burn subtitles (libass)
+        shell: bash
+        run: |
+          echo "ffmpeg on PATH: $(command -v ffmpeg)"
+          if ! ffmpeg -hide_banner -filters \
+              | grep -E '^ *[^[:space:]]+ +(subtitles|ass) +' >/dev/null; then
+            echo "::error::ffmpeg lacks libass: the 'subtitles'/'ass' filter is missing. Install a build with --enable-libass (macOS: brew install ffmpeg-full)."
+            ffmpeg -hide_banner -filters | grep -i -E 'libass|subtitles|ass' || true
+            exit 1
+          fi
+          ffmpeg -hide_banner -filters | grep -E '^ *[^[:space:]]+ +(subtitles|ass) +'
 
       - name: Check formatting
         run: cargo fmt --all -- --check

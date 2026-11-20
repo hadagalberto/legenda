@@ -49,6 +49,28 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --release
 ```
 
+### O ffmpeg precisa de libass
+
+O `burn` exige um ffmpeg compilado com **libass**. Sem ele o ffmpeg sai com
+código 8 e a mensagem críptica `Filter not found`, porque o filtro
+`subtitles`/`ass` não existe. Verifique sua instalação:
+
+```sh
+ffmpeg -hide_banner -filters | grep -E ' (subtitles|ass) '
+```
+
+Se nada for impresso, instale um build com libass:
+
+- **Linux (Debian/Ubuntu):** `sudo apt-get install ffmpeg`
+- **macOS:** o `ffmpeg` padrão do Homebrew não inclui libass. Instale a
+  fórmula `ffmpeg-full` (keg-only) e use seus binários:
+  `brew install ffmpeg-full`, depois `$(brew --prefix ffmpeg-full)/bin/ffmpeg`
+  (ou passe esse caminho em `legenda burn --ffmpeg CAMINHO`).
+- **Windows:** `choco install ffmpeg` (os builds do gyan.dev incluem libass).
+
+O `legenda burn` consulta a lista de filtros antes de iniciar o ffmpeg e falha
+imediatamente com essas instruções quando o libass está ausente.
+
 ## Visão dos comandos
 
 | Comando | Finalidade |
@@ -102,7 +124,8 @@ intactos; chaves são escapadas.
 O arquivo de legendas é copiado para um nome temporário ASCII antes da queima,
 então metacaracteres de filtro (`, ; [ ] '`), espaços e acentos nos caminhos
 nunca chegam ao escape de dois níveis do ffmpeg. Os caminhos de vídeo e saída
-são passados literalmente. Funciona em Linux, macOS e Windows.
+são passados literalmente. Funciona em Linux, macOS e Windows com um ffmpeg
+que inclua libass (veja Instalação).
 
 ## Receita: reflow no estilo Netflix
 

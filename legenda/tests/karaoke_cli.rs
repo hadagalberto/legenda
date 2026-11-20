@@ -7,6 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use legenda_core::{ass, Format, Subtitle};
 
+mod common;
+
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Every path component is hostile to ffmpeg filtergraph parsing: commas,
@@ -138,6 +140,9 @@ fn karaoke_command_rejects_invalid_options() {
 
 #[test]
 fn burn_embeds_captions_into_generated_video() {
+    if !common::libass_available() {
+        return;
+    }
     let directory = temp_dir("burn");
     let video = directory.join("input, [v]; #2's çã.mp4");
     let transcript = directory.join("transcript, [json]; #3's çã.json");

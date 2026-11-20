@@ -23,6 +23,7 @@
 use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::process::Command as StdCommand;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -56,6 +57,75 @@ impl SubtitlesFilter {
 impl fmt::Display for SubtitlesFilter {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.expression)
+    }
+}
+
+/// The libass-backed filters relevant to burning ASS captions, as advertised
+/// by `ffmpeg -filters`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LibassFilters {
+    /// The `subtitles` filter (libass-backed text/ASS renderer).
+    pub subtitles: bool,
+    /// The `ass` filter (libass-backed ASS renderer).
+    pub ass: bool,
+}
+
+impl LibassFilters {
+    /// Either libass-backed filter is enough to render captions.
+    pub fn supports_libass(self) -> bool {
+        self.subtitles || self.ass
+    }
+}
+
+/// Parses the listing printed by `ffmpeg -hide_banner -filters`.
+///
+/// Filter lines look like ` .. subtitles   V->V   Render text subtitles ...`.
+/// The name is the token immediately before the `in->out` signature token;
+/// anchoring on `->` keeps this correct even when the leading flag column
+/// changes width between ffmpeg versions. Descriptions are never scanned, so
+/// a filter that merely mentions "ASS subtitles" does not count as libass.
+pub fn parse_libass_filters(output: &str) -> LibassFilters {
+    let mut found = LibassFilters::default();
+    for line in output.lines() {
+        let mut previous = None;
+        for token in line.split_whitespace() {
+            if token.contains("->") {
+                match previous {
+                    Some("subtitles") => found.subtitles = true,
+                    Some("ass") => found.ass = true,
+                    _ => {}
+                }
+                break;
+            }
+            previous = Some(token);
+        }
+    }
+    found
+}
+
+/// Runs `ffmpeg -hide_banner -filters` once and parses the advertised filters.
+pub fn probe_libass_filters(ffmpeg: &Path) -> Result<LibassFilters> {
+    let output = StdCommand::new(ffmpeg).args(["-hide_banner", "-filters"]).output()?;
+    if !output.status.success() {
+        return Err(Error::FfmpegFailed(format!(
+            "{} -hide_banner -filters exited with {}",
+            ffmpeg.display(),
+            output.status
+        )));
+    }
+    Ok(parse_libass_filters(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// Fails fast when the probed ffmpeg build cannot render ASS captions.
+///
+/// Without this check a libass-less build dies deep inside the filtergraph
+/// with ffmpeg exit 8 and the cryptic message `Filter not found`.
+pub fn ensure_libass(ffmpeg: &Path) -> Result<LibassFilters> {
+    let filters = probe_libass_filters(ffmpeg)?;
+    if filters.supports_libass() {
+        Ok(filters)
+    } else {
+        Err(Error::MissingLibass { ffmpeg: ffmpeg.to_path_buf() })
     }
 }
 
@@ -327,5 +397,75 @@ mod tests {
             BurnOptions::parse_encoder_option("preset=p4").unwrap(),
             ("preset".into(), "p4".into())
         );
+    }
+
+    #[test]
+    fn parses_libass_filters_from_ffmpeg_listing() {
+        let listing = "\
+Filters:
+  T.. = Timeline support
+  .S. = Slice threading
+  ------
+ TS allpass           A->A       Apply a two-pole all-pass filter.
+ .. ass               V->V       Render ASS subtitles onto input video using the libass library.
+ .. subtitles         V->V       Render text subtitles onto input video using the libass library.
+ .. scale             V->V       Scale the input video.
+";
+        let found = parse_libass_filters(listing);
+        assert!(found.ass, "ass filter must be detected");
+        assert!(found.subtitles, "subtitles filter must be detected");
+        assert!(found.supports_libass());
+    }
+
+    #[test]
+    fn either_libass_filter_is_sufficient() {
+        let only_subtitles =
+            parse_libass_filters(" .. subtitles         V->V       Render text subtitles.\n");
+        assert!(only_subtitles.subtitles);
+        assert!(!only_subtitles.ass);
+        assert!(only_subtitles.supports_libass());
+
+        let only_ass = parse_libass_filters(" .. ass               V->V       Render ASS.\r\n");
+        assert!(only_ass.ass);
+        assert!(!only_ass.subtitles);
+        assert!(only_ass.supports_libass());
+    }
+
+    #[test]
+    fn rejects_listings_without_libass_filters() {
+        let listing = "\
+Filters:
+  T.. = Timeline support
+  ------
+ .. allpass           A->A       Apply a two-pole all-pass filter.
+ .. scale             V->V       Scale the input video.
+ .. drawtext          V->V       Draw text using libfreetype.
+";
+        let found = parse_libass_filters(listing);
+        assert!(!found.ass);
+        assert!(!found.subtitles);
+        assert!(!found.supports_libass());
+    }
+
+    #[test]
+    fn descriptions_and_lookalike_names_do_not_count_as_libass() {
+        let listing = "\
+Filters:
+ .. scale             V->V       Burn ASS subtitles into the frame (description only).
+ .. subtitle          V->V       A different filter with a singular name.
+ .. subsubtitles      V->V       A lookalike that is not libass.
+ .. assistant         V->V       Another lookalike.
+";
+        assert!(!parse_libass_filters(listing).supports_libass());
+    }
+
+    #[test]
+    fn missing_libass_error_explains_how_to_install_it() {
+        let message = Error::MissingLibass { ffmpeg: PathBuf::from("ffmpeg") }.to_string();
+        assert!(message.contains("lacks libass"), "{message}");
+        assert!(message.contains("--enable-libass"), "{message}");
+        for os in ["Ubuntu", "macOS", "Windows"] {
+            assert!(message.contains(os), "missing {os} instruction: {message}");
+        }
     }
 }

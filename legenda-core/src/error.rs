@@ -67,6 +67,16 @@ pub enum Error {
     #[error("ffmpeg failed: {0}")]
     FfmpegFailed(String),
 
+    /// The probed ffmpeg build cannot render ASS captions because it lacks libass.
+    #[error(
+        "your ffmpeg build ({ffmpeg:?}) lacks libass: neither the 'subtitles' nor the 'ass' filter \
+         is available. Install a build compiled with --enable-libass: on Ubuntu/Debian \
+         `sudo apt-get install ffmpeg`; on macOS `brew install ffmpeg-full` and use \
+         $(brew --prefix ffmpeg-full)/bin/ffmpeg; on Windows `choco install ffmpeg`. \
+         You can also select a working binary with `legenda burn --ffmpeg PATH`."
+    )]
+    MissingLibass { ffmpeg: std::path::PathBuf },
+
     /// A colour literal is not a valid `#RRGGBB[AA]` value.
     #[error("invalid colour {0:?}: expected #RRGGBB or #RRGGBBAA")]
     InvalidColour(String),

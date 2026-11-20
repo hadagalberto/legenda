@@ -14,9 +14,13 @@ cargo build --workspace
 ```
 
 Rust stable with MSRV 1.85 is required. Components: `rustfmt` and `clippy`.
-No system library is needed for the library or CLI; install `ffmpeg` and
-`ffprobe` to run the `burn` end-to-end test (CI installs them on every matrix
-platform).
+No system library is needed for the library or CLI. The `burn` end-to-end test
+needs `ffmpeg` **and** `ffprobe` builds with libass (check with
+`ffmpeg -hide_banner -filters | grep -E ' (subtitles|ass) '`). Homebrew's
+default macOS `ffmpeg` lacks libass, so use `brew install ffmpeg-full` there
+and put `$(brew --prefix ffmpeg-full)/bin` first on `PATH`. CI installs a
+libass-enabled build on every matrix platform and verifies the filters before
+running tests; the burn e2e tests never skip in CI.
 
 ## Quality gate — run before every commit
 
@@ -80,6 +84,11 @@ The CI matrix runs Ubuntu, Windows and macOS. Every step in
   temporary name, while `video` and `output` stay verbatim argv elements.
 - The e2e burn test generates its video with ffmpeg `lavfi` and asserts the
   output duration with ffprobe; it never assumes a pre-existing media file.
+- `burn::ensure_libass` probes `ffmpeg -hide_banner -filters` once before
+  spawning ffmpeg, so a build without the `subtitles`/`ass` filters fails with
+  installation instructions instead of ffmpeg exit 8. The e2e tests gate on the
+  same probe: locally they may skip with a printed reason only when libass is
+  missing; in CI a missing filter is a hard failure.
 
 ## Commits
 

@@ -49,6 +49,28 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --release
 ```
 
+### ffmpeg needs libass
+
+`burn` needs an ffmpeg build compiled with **libass**. Without it ffmpeg exits
+8 with the cryptic `Filter not found`, because the `subtitles`/`ass` filter
+does not exist. Check your build first:
+
+```sh
+ffmpeg -hide_banner -filters | grep -E ' (subtitles|ass) '
+```
+
+If that prints nothing, install a build with libass:
+
+- **Linux (Debian/Ubuntu):** `sudo apt-get install ffmpeg`
+- **macOS:** Homebrew's default `ffmpeg` omits libass. Install the keg-only
+  `ffmpeg-full` formula and use its binaries: `brew install ffmpeg-full`, then
+  `$(brew --prefix ffmpeg-full)/bin/ffmpeg` (or pass that path to
+  `legenda burn --ffmpeg PATH`).
+- **Windows:** `choco install ffmpeg` (the gyan.dev builds include libass).
+
+`legenda burn` probes the filter list before starting ffmpeg and fails fast
+with these instructions when libass is missing.
+
 ## Command overview
 
 | Command | Purpose |
@@ -101,7 +123,7 @@ within their segment. Presets: `hormozi` (bold uppercase + accent pop),
 The caption file is copied to a temporary ASCII-only name before burning, so
 filtergraph metacharacters in your paths (`, ; [ ] '`), spaces and accents never
 reach ffmpeg's two-level escaping. Video and output paths are passed verbatim.
-Works on Linux, macOS and Windows.
+Works on Linux, macOS and Windows with a libass-enabled ffmpeg (see Install).
 
 ## Recipe: Netflix-style reflow
 

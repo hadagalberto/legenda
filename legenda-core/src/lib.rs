@@ -24,7 +24,7 @@ pub mod vtt;
 
 mod text_util;
 
-pub use burn::{BurnOptions, SubtitlesFilter};
+pub use burn::{BurnOptions, LibassFilters, SubtitlesFilter};
 pub use error::{Error, Result};
 pub use karaoke::{KaraokeOptions, KaraokePreset};
 pub use lint::{LintConfig, LintIssue, LintReport, LintRule};
