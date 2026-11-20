@@ -13,6 +13,16 @@ use legenda_core::burn::probe_libass_filters;
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// Serialises the tests in this binary. On Linux, writing an executable while
+/// another test thread forks a child lets that child inherit the still-open
+/// write descriptor, so exec'ing the script fails with ETXTBSY
+/// ("Text file busy"). Holding this lock across write + exec prevents it.
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Writes a fake ffmpeg that prints `listing` for `-filters` and exits 7 for
 /// everything else, returning the path to the executable script.
 fn fake_ffmpeg(listing: &str) -> PathBuf {
@@ -67,6 +77,7 @@ fn burn_with(ffmpeg: &Path, captions: &Path) -> std::process::Output {
 
 #[test]
 fn library_probe_reads_filters_from_a_real_process() {
+    let _serial = serial();
     let fake = fake_ffmpeg("Filters:\n .. subtitles         V->V       Render text subtitles.\n");
     let filters = probe_libass_filters(&fake).unwrap();
     assert!(filters.subtitles, "{filters:?}");
@@ -76,6 +87,7 @@ fn library_probe_reads_filters_from_a_real_process() {
 
 #[test]
 fn cli_fails_fast_when_ffmpeg_lacks_libass() {
+    let _serial = serial();
     let fake = fake_ffmpeg("Filters:\n .. scale             V->V       Scale the input video.\n");
     let captions = caption_file(&fake);
     let output = burn_with(&fake, &captions);
@@ -89,6 +101,7 @@ fn cli_fails_fast_when_ffmpeg_lacks_libass() {
 
 #[test]
 fn cli_proceeds_to_ffmpeg_when_an_ass_filter_is_available() {
+    let _serial = serial();
     let fake = fake_ffmpeg("Filters:\n .. ass               V->V       Render ASS subtitles.\n");
     let captions = caption_file(&fake);
     let output = burn_with(&fake, &captions);
