@@ -84,6 +84,21 @@ pub enum Error {
     /// Wraps an underlying I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// An I/O error together with the path that caused it.
+    #[error("I/O error for {path}: {source}")]
+    IoWithPath {
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// The output format could not be inferred from a file extension.
+    #[error(
+        "cannot infer output format from extension {extension:?}; pass --to <srt|vtt|ass> \
+         (or --output-format) or use a recognised extension"
+    )]
+    CannotInferOutputFormat { extension: String },
 }
 
 /// Convenience result type for the crate.

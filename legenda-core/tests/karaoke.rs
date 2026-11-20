@@ -291,7 +291,10 @@ fn presets_emit_their_signature_override_tags() {
     assert!(clean.contains("\\alpha&H00&"), "clean reveals words");
 
     let karaoke = rendered(KaraokePreset::Karaoke);
-    assert!(karaoke.contains("\\k32"), "first word lasts 32 centiseconds");
+    // The first word is spoken 0-320 ms, but its fill must run through the
+    // 20 ms gap to the next word at 340 ms: 34 centiseconds, not 32. The old
+    // 32 value made every subsequent fill drift ahead of the voice.
+    assert!(karaoke.contains("\\k34"), "first fill covers 0-340 ms");
 
     let bounce = rendered(KaraokePreset::Bounce);
     assert!(bounce.contains("\\fscx135"));
@@ -459,8 +462,10 @@ fn transform_times_are_milliseconds_and_k_is_centiseconds() {
     assert!(bounce.contains("\\t(0,80,\\fscx135"), "bounce pop-in uses milliseconds");
     assert!(bounce.contains("\\t(320,321,\\"), "bounce highlight released at 320 ms");
 
-    // \kf/\k are the one place where centiseconds are correct.
+    // \kf/\k are the one place where centiseconds are correct. The first
+    // fill spans 0-340 ms (spoken 0-320 ms plus the gap to the next word),
+    // so it is 34 cs and lines up with the \t(340) transform of word two.
     let karaoke = render_preset(KaraokePreset::Karaoke);
-    assert!(karaoke.contains("\\k32"), "first word is 32 centiseconds");
+    assert!(karaoke.contains("\\k34"), "first fill covers 0-340 ms");
     assert!(karaoke.contains("\\t(0,80,\\fscx108"), "karaoke pop-in uses milliseconds");
 }

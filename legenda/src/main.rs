@@ -22,6 +22,9 @@ use legenda_core::{ass, convert, Error, Format, PlainCue, Subtitle};
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    /// Explicit output format when the output path has an unknown extension.
+    #[arg(long, global = true)]
+    output_format: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -248,7 +251,13 @@ fn main() {
 
 /// Exit codes: 0 success/clean, 1 lint violations, 2 operational error.
 fn run() -> i32 {
-    match execute() {
+    let result = execute();
+    // Library routines that recover from bad input (encoding fallback, shifts
+    // past zero, etc.) record non-fatal diagnostics here; print them all once.
+    for warning in legenda_core::warnings::take() {
+        eprintln!("warning: {warning}");
+    }
+    match result {
         Ok(code) => code,
         Err(error) => {
             eprintln!("error: {error}");
@@ -259,20 +268,24 @@ fn run() -> i32 {
 
 fn execute() -> Result<i32> {
     let cli = Cli::parse();
+    let output_format = cli.output_format.as_deref().map(parse_format_name).transpose()?;
     match cli.command {
         Command::Convert { input, output, from, to } => {
-            let bytes = std::fs::read(&input)?;
+            let bytes = read_bytes(&input)?;
             let source_format = match from {
                 Some(name) => parse_format_name(&name)?,
                 None => Format::detect(&bytes, &input)?,
             };
             let target_format = match to {
                 Some(name) => parse_format_name(&name)?,
-                None => ops::output_format_from_path(&source_format, &output),
+                None => match output_format {
+                    Some(format) => format,
+                    None => ops::output_format_from_path(&source_format, &output)?,
+                },
             };
             let subtitle = Subtitle::decode(&bytes, source_format)?;
             let converted = convert::convert(&subtitle, target_format)?;
-            std::fs::write(&output, converted.encode()?)?;
+            write_bytes(&output, &converted.encode()?)?;
             println!(
                 "converted {} -> {} ({} cues)",
                 source_format.name(),
@@ -281,7 +294,7 @@ fn execute() -> Result<i32> {
             );
         }
         Command::Info { input, format } => {
-            let bytes = std::fs::read(&input)?;
+            let bytes = read_bytes(&input)?;
             let detected = match format {
                 Some(name) => parse_format_name(&name)?,
                 None => Format::detect(&bytes, &input)?,
@@ -299,13 +312,13 @@ fn execute() -> Result<i32> {
         }
         Command::Shift { input, output, by } => {
             let delta = ops::parse_time(&by)?;
-            edit(&input, &output, |cues| ops::shift(cues, delta))?;
+            edit(&input, &output, output_format, |cues| ops::shift(cues, delta).map(|_| ()))?;
             println!("shifted cues by {by}");
         }
         Command::Scale { input, output, from, to } => {
             let source = FrameRate::parse(&from)?;
             let target = FrameRate::parse(&to)?;
-            edit(&input, &output, |cues| ops::scale(cues, source, target))?;
+            edit(&input, &output, output_format, |cues| ops::scale(cues, source, target))?;
             println!("scaled cues from {source} fps to {target} fps");
         }
         Command::Sync { input, output, from_a, to_a, from_b, to_b } => {
@@ -315,13 +328,15 @@ fn execute() -> Result<i32> {
                 ops::parse_time(&from_b)?,
                 ops::parse_time(&to_b)?,
             );
-            edit(&input, &output, |cues| ops::sync(cues, source_a, target_a, source_b, target_b))?;
+            edit(&input, &output, output_format, |cues| {
+                ops::sync(cues, source_a, target_a, source_b, target_b).map(|_| ())
+            })?;
             println!("synchronised cues using two reference points");
         }
         Command::Clamp { input, output, start, end } => {
             let lower = ops::parse_time(&start)?;
             let upper = ops::parse_time(&end)?;
-            edit(&input, &output, |cues| ops::clamp(cues, lower, upper))?;
+            edit(&input, &output, output_format, |cues| ops::clamp(cues, lower, upper))?;
             println!("clamped cues to [{start}, {end}]");
         }
         Command::Merge { inputs, output } => {
@@ -339,15 +354,15 @@ fn execute() -> Result<i32> {
             }
             let merged = ops::merge(&documents)?;
             let count = merged.plain_cues()?.len();
-            write_subtitle(&output, &merged)?;
+            write_subtitle(&output, &merged, output_format)?;
             println!("merged {} files into {count} cues", inputs.len());
         }
         Command::Split { input, first, second, at } => {
             let boundary = ops::parse_time(&at)?;
             let subtitle = read_subtitle(&input, None)?.0;
             let (head, tail) = ops::split_at_time(&subtitle, boundary)?;
-            write_subtitle(&first, &head)?;
-            write_subtitle(&second, &tail)?;
+            write_subtitle(&first, &head, output_format)?;
+            write_subtitle(&second, &tail, output_format)?;
             println!(
                 "split at {at}: {} / {} cues",
                 head.plain_cues()?.len(),
@@ -357,7 +372,7 @@ fn execute() -> Result<i32> {
         Command::Clean { input, output, hi, speakers } => {
             let remove_hi = hi || !speakers;
             let remove_speakers = speakers || !hi;
-            edit(&input, &output, |cues| {
+            edit(&input, &output, output_format, |cues| {
                 if remove_hi {
                     ops::strip_hearing_impaired(cues);
                 }
@@ -369,14 +384,14 @@ fn execute() -> Result<i32> {
             println!("cleaned cues");
         }
         Command::StripHi { input, output } => {
-            edit(&input, &output, |cues| {
+            edit(&input, &output, output_format, |cues| {
                 ops::strip_hearing_impaired(cues);
                 Ok(())
             })?;
             println!("removed hearing-impaired annotations");
         }
         Command::StripSpeakers { input, output } => {
-            edit(&input, &output, |cues| {
+            edit(&input, &output, output_format, |cues| {
                 ops::strip_speaker_labels(cues);
                 Ok(())
             })?;
@@ -415,7 +430,7 @@ fn execute() -> Result<i32> {
             let mut cues = subtitle.plain_cues()?;
             reflow::reflow(&mut cues, &options)?;
             let result = ops::with_cues(&subtitle, &cues)?;
-            write_subtitle(&output, &result)?;
+            write_subtitle(&output, &result, output_format)?;
             println!("reflowed {} cues with preset {}", cues.len(), selected.name());
         }
         Command::Karaoke {
@@ -489,11 +504,11 @@ fn execute() -> Result<i32> {
                 options.page_gap_threshold = Time::from_millis(millis as i64);
             }
             options.emphasis = emphasis;
-            let json = std::fs::read_to_string(&input)?;
+            let json = read_text(&input)?;
             let transcript = transcript::parse_transcript(&json)?;
             let document = karaoke::render(&transcript.words, &options)?;
             let pages = document.dialogues().len();
-            std::fs::write(&output, ass::write(&document)?)?;
+            write_bytes(&output, ass::write(&document)?.as_bytes())?;
             println!(
                 "wrote {pages} karaoke pages ({}) from {} words to {}",
                 selected.name(),
@@ -526,8 +541,22 @@ fn execute() -> Result<i32> {
     Ok(0)
 }
 
+fn read_bytes(path: &Path) -> Result<Vec<u8>> {
+    std::fs::read(path).map_err(|source| Error::IoWithPath { path: path.to_owned(), source })
+}
+
+fn read_text(path: &Path) -> Result<String> {
+    std::fs::read_to_string(path)
+        .map_err(|source| Error::IoWithPath { path: path.to_owned(), source })
+}
+
+fn write_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    std::fs::write(path, bytes)
+        .map_err(|source| Error::IoWithPath { path: path.to_owned(), source })
+}
+
 fn read_subtitle(path: &Path, format: Option<&str>) -> Result<(Subtitle, Format)> {
-    let bytes = std::fs::read(path)?;
+    let bytes = read_bytes(path)?;
     let detected = match format {
         Some(name) => parse_format_name(name)?,
         None => Format::detect(&bytes, path)?,
@@ -535,14 +564,17 @@ fn read_subtitle(path: &Path, format: Option<&str>) -> Result<(Subtitle, Format)
     Ok((Subtitle::decode(&bytes, detected)?, detected))
 }
 
-fn write_subtitle(path: &Path, subtitle: &Subtitle) -> Result<()> {
-    let target = ops::output_format(subtitle, path);
+fn write_subtitle(path: &Path, subtitle: &Subtitle, format: Option<Format>) -> Result<()> {
+    let target = match format {
+        Some(format) => format,
+        None => ops::output_format(subtitle, path)?,
+    };
     let converted = convert::convert(subtitle, target)?;
-    std::fs::write(path, converted.encode()?)?;
+    write_bytes(path, &converted.encode()?)?;
     Ok(())
 }
 
-fn edit<F>(input: &Path, output: &Path, change: F) -> Result<()>
+fn edit<F>(input: &Path, output: &Path, format: Option<Format>, change: F) -> Result<()>
 where
     F: FnOnce(&mut Vec<PlainCue>) -> Result<()>,
 {
@@ -550,7 +582,7 @@ where
     let mut cues = subtitle.plain_cues()?;
     change(&mut cues)?;
     let result = ops::with_cues(&subtitle, &cues)?;
-    write_subtitle(output, &result)
+    write_subtitle(output, &result, format)
 }
 
 fn parse_format_name(name: &str) -> Result<Format> {

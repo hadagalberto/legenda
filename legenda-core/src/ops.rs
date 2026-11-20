@@ -111,6 +111,13 @@ fn time_difference(a: Time, b: Time) -> Result<Rational> {
     a.as_rational().checked_sub(b.as_rational())
 }
 
+/// Records a recoverable timing adjustment both in the operation's return
+/// value and in the thread-local diagnostic buffer used by the CLI.
+fn record_warning(warnings: &mut Vec<String>, message: String) {
+    crate::warnings::warn(&message);
+    warnings.push(message);
+}
+
 fn map_times(cues: &mut [PlainCue], f: impl Fn(Time) -> Result<Time>) -> Result<()> {
     for cue in cues.iter_mut() {
         let start = f(cue.start)?;
@@ -126,8 +133,50 @@ fn map_times(cues: &mut [PlainCue], f: impl Fn(Time) -> Result<Time>) -> Result<
 // ---------------------------------------------------------------------------
 
 /// Adds `delta` to every cue timestamp. A negative delta shifts earlier.
-pub fn shift(cues: &mut [PlainCue], delta: Time) -> Result<()> {
-    map_times(cues, |time| add(time, delta.as_rational()))
+///
+/// The timeline starts at zero: a cue that ends at or before zero is dropped
+/// and one that straddles zero has its start clamped. Every such change is
+/// reported in the returned warnings so the CLI can surface it.
+pub fn shift(cues: &mut Vec<PlainCue>, delta: Time) -> Result<Vec<String>> {
+    let offset = delta.as_rational();
+    let mut warnings = Vec::new();
+    let mut kept = Vec::with_capacity(cues.len());
+    for cue in cues.drain(..) {
+        let start = cue.start.as_rational().checked_add(offset)?;
+        let end = cue.end.as_rational().checked_add(offset)?;
+        // Strictly before zero: a cue ending exactly at zero is kept and
+        // clamped to a minimal visible duration below.
+        if end < Rational::ZERO {
+            record_warning(
+                &mut warnings,
+                format!("cue {:?} ends before 00:00:00,000 after shift and was dropped", cue.text),
+            );
+            continue;
+        }
+        let (start, end) = if start < Rational::ZERO {
+            record_warning(
+                &mut warnings,
+                format!(
+                    "cue {:?} started before 00:00:00,000 after shift and was clamped to zero",
+                    cue.text
+                ),
+            );
+            // An end exactly at zero has no visible duration; keep a
+            // one-second minimum for the clamped edge.
+            let end =
+                if end <= Rational::ZERO { Time::from_millis(1_000).as_rational() } else { end };
+            (Rational::ZERO, end)
+        } else {
+            (start, end)
+        };
+        kept.push(PlainCue {
+            start: Time::from_rational_seconds(start),
+            end: Time::from_rational_seconds(end),
+            text: cue.text,
+        });
+    }
+    *cues = kept;
+    Ok(warnings)
 }
 
 /// Converts timing from `source` to `target` frame rate: `t' = t * source/target`.
@@ -139,23 +188,38 @@ pub fn scale(cues: &mut [PlainCue], source: FrameRate, target: FrameRate) -> Res
 /// Affine two-point sync. `(from_a, to_a)` and `(from_b, to_b)` are reference
 /// pairs; all cues are mapped by the unique line through both points.
 pub fn sync(
-    cues: &mut [PlainCue],
+    cues: &mut Vec<PlainCue>,
     from_a: Time,
     to_a: Time,
     from_b: Time,
     to_b: Time,
-) -> Result<()> {
+) -> Result<Vec<String>> {
     let span = time_difference(from_b, from_a)?;
     if span == Rational::ZERO {
         return Err(Error::DegenerateSync);
     }
     let slope = time_difference(to_b, to_a)?.checked_div(span)?;
     let intercept = to_a.as_rational().checked_sub(slope.checked_mul(from_a.as_rational())?)?;
-    map_times(cues, |time| {
-        Ok(Time::from_rational_seconds(
-            slope.checked_mul(time.as_rational())?.checked_add(intercept)?,
-        ))
-    })
+    let mapped: Vec<PlainCue> = cues
+        .iter()
+        .map(|cue| {
+            Ok(PlainCue {
+                start: Time::from_rational_seconds(
+                    slope.checked_mul(cue.start.as_rational())?.checked_add(intercept)?,
+                ),
+                end: Time::from_rational_seconds(
+                    slope.checked_mul(cue.end.as_rational())?.checked_add(intercept)?,
+                ),
+                text: cue.text.clone(),
+            })
+        })
+        .collect::<Result<_>>()?;
+    *cues = mapped;
+    // `sync` is a pure affine map: reference points must land exactly where
+    // requested, including when the target timeline runs backwards. Negative
+    // results are clamped by the shared formatter at write time, so no writer
+    // can emit an unparseable negative timestamp.
+    Ok(Vec::new())
 }
 
 /// Keeps only the part of each cue inside `[lower, upper]`; cues entirely
@@ -474,14 +538,25 @@ fn parse_decimal_ratio(input: &str) -> Option<Rational> {
     }
 }
 
-/// Infers a format for an output path, falling back to `source` when the
-/// extension is unknown (for example for `out.txt`).
-pub fn output_format_from_path(source: &Format, path: impl AsRef<std::path::Path>) -> Format {
-    Format::from_extension(&path).unwrap_or(*source)
+/// Infers the output format strictly from the file extension. An unknown
+/// extension is an error: silently writing SRT hides typos such as `out.xyz`.
+/// Callers that intentionally want another format must pass it explicitly.
+pub fn output_format_from_path(
+    _source: &Format,
+    path: impl AsRef<std::path::Path>,
+) -> Result<Format> {
+    let path = path.as_ref();
+    Format::from_extension(path).ok_or_else(|| Error::CannotInferOutputFormat {
+        extension: path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or("<none>")
+            .to_owned(),
+    })
 }
 
 /// Infers a format for an output path from a subtitle document.
-pub fn output_format(source: &Subtitle, path: impl AsRef<std::path::Path>) -> Format {
+pub fn output_format(source: &Subtitle, path: impl AsRef<std::path::Path>) -> Result<Format> {
     output_format_from_path(&source.format(), path)
 }
 

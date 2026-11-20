@@ -473,6 +473,27 @@ fn render_page(
 ) -> Result<String> {
     let anchor = page_anchor(options);
     let mut text = format!("{{\\pos({},{})}}", anchor.0, anchor.1);
+
+    // libass treats consecutive `\k` values as CUMULATIVE centiseconds from
+    // the start of the Dialogue. A `\k` therefore has to cover the silence
+    // before its word as well, otherwise the fill drifts ahead of the voice.
+    // Folding each inter-word gap into the preceding word's fill means every
+    // word's fill begins exactly at its spoken start, and the sum of all
+    // `\k` values equals (last word end - line start).
+    let ordered: Vec<&Word> = page.lines.iter().flat_map(|line| line.iter().copied()).collect();
+    let mut fills = Vec::with_capacity(ordered.len());
+    for (index, word) in ordered.iter().enumerate() {
+        let start_cs = centiseconds_since(page.start, word.start);
+        let duration = if index + 1 < ordered.len() {
+            // Extend this word through the gap up to the next spoken start.
+            (centiseconds_since(page.start, ordered[index + 1].start) - start_cs).max(1)
+        } else {
+            centiseconds_between(word.start, word.end).max(1)
+        };
+        fills.push(duration);
+    }
+
+    let mut cursor = 0;
     for (line_index, line) in page.lines.iter().enumerate() {
         if line_index != 0 {
             text.push_str("\\N");
@@ -481,7 +502,9 @@ fn render_page(
         for (index, word) in line.iter().enumerate() {
             let highlighted =
                 normalise_word(&word.text).is_some_and(|text| emphasis.contains(&text));
-            text.push_str(&render_word(word, page.start, options, style, highlighted)?);
+            let fill = fills[cursor];
+            cursor += 1;
+            text.push_str(&render_word(word, page.start, fill, options, style, highlighted)?);
             if index != last {
                 text.push(' ');
             }
@@ -493,6 +516,7 @@ fn render_page(
 fn render_word(
     word: &Word,
     page_start: Time,
+    karaoke_duration: i64,
     options: &KaraokeOptions,
     style: &PresetStyle,
     highlighted: bool,
@@ -504,8 +528,9 @@ fn render_word(
     // the first ~0.1 s and lasted ~8 ms instead of the whole word.
     let start = millis_since(page_start, word.start);
     let end = millis_since(page_start, word.end);
-    // `\k`/`\kf` are the exception: libass defines them in centiseconds.
-    let karaoke_duration = centiseconds_between(word.start, word.end);
+    // `\k`/`\kf` are the exception: libass defines them in centiseconds. The
+    // value is computed by `render_page` from the word's spoken start and the
+    // next word's start so the fill timeline and the `\t` timeline agree.
 
     let active = if highlighted { options.emphasis_color } else { options.accent };
     let primary = options.primary.format_ass();
@@ -619,7 +644,14 @@ fn millis_since(page_start: Time, time: Time) -> i64 {
     scaled.round().max(0)
 }
 
-/// Word duration in centiseconds; used exclusively by `\k` and `\kf`.
+/// Centiseconds from the start of a Dialogue to `time`, used to align `\k`
+/// fill boundaries with the millisecond `\t` highlights.
+fn centiseconds_since(page_start: Time, time: Time) -> i64 {
+    let scaled = (time.as_rational() - page_start.as_rational()) * Rational::from_int(100);
+    scaled.round().max(0)
+}
+
+/// Word duration in centiseconds; used for the last word's `\k` fill.
 fn centiseconds_between(start: Time, end: Time) -> i64 {
     let scaled = (end.as_rational() - start.as_rational()) * Rational::from_int(100);
     scaled.round().max(1)

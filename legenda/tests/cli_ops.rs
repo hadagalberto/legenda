@@ -215,6 +215,36 @@ fn lint_shorts_preset_uses_its_own_limits() {
 }
 
 #[test]
+fn unknown_output_extension_is_an_error_without_an_explicit_format() {
+    // Silently falling back to SRT hides typos such as `out.xyz`. The command
+    // must fail and tell the user to pass `--to` (the output-format flag).
+    let directory = temp_dir();
+    let input = directory.join("in.srt");
+    let output = directory.join("out.xyz");
+    std::fs::write(&input, "1\n00:00:01,000 --> 00:00:02,000\nOlá\n").unwrap();
+
+    let result = run(&["convert", input.to_str().unwrap(), output.to_str().unwrap()]);
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("cannot infer output format"), "{stderr}");
+    assert!(stderr.contains("--to"), "{stderr}");
+
+    let explicit =
+        run(&["convert", input.to_str().unwrap(), output.to_str().unwrap(), "--to", "srt"]);
+    assert!(explicit.status.success(), "{}", String::from_utf8_lossy(&explicit.stderr));
+}
+
+#[test]
+fn io_errors_name_the_file_that_failed() {
+    let missing = temp_dir().join("does-not-exist.srt");
+    let result = run(&["info", missing.to_str().unwrap()]);
+    assert!(!result.status.success());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("I/O error"), "{stderr}");
+    assert!(stderr.contains("does-not-exist.srt"), "{stderr}");
+}
+
+#[test]
 fn reflow_command_enforces_preset_limits() {
     let directory = temp_dir();
     let input = directory.join("in.srt");

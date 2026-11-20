@@ -21,6 +21,7 @@ pub mod srt;
 pub mod time;
 pub mod transcript;
 pub mod vtt;
+pub mod warnings;
 
 mod text_util;
 

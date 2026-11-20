@@ -12,6 +12,8 @@ use std::fmt;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Encoding {
     Utf8,
+    /// Predominantly UTF-8, with a handful of bytes recovered as windows-1252.
+    Utf8With1252Fallback,
     Utf8Bom,
     Utf16Le,
     Utf16Be,
@@ -22,6 +24,7 @@ impl fmt::Display for Encoding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
             Self::Utf8 => "UTF-8",
+            Self::Utf8With1252Fallback => "UTF-8 (with windows-1252 fallback)",
             Self::Utf8Bom => "UTF-8 (BOM)",
             Self::Utf16Le => "UTF-16 LE",
             Self::Utf16Be => "UTF-16 BE",
@@ -52,19 +55,78 @@ pub fn detect(bytes: &[u8]) -> Encoding {
 
 /// Decodes `bytes` into a Rust string.
 ///
-/// Decoding is total: malformed UTF-16 sequences become U+FFFD and undecodable
-/// single bytes are mapped through the windows-1252 table. The detected
-/// encoding is returned alongside the text.
+/// BOM-marked UTF-8 and UTF-16 are decoded as a whole. Byte streams without a
+/// BOM are decoded as UTF-8 *per sequence*: valid UTF-8 runs are kept as-is and
+/// only the offending bytes are recovered through the windows-1252 table. A
+/// single stray legacy byte can therefore no longer turn a whole UTF-8 file
+/// into mojibake. Pure legacy files are still reported as `Windows1252`; mixed
+/// files are reported as `Utf8With1252Fallback` and raise a warning.
+///
+/// Decoding is total: malformed UTF-16 sequences become U+FFFD.
 pub fn decode(bytes: &[u8]) -> (String, Encoding) {
     let encoding = detect(bytes);
     let text = match encoding {
         Encoding::Utf8Bom => String::from_utf8_lossy(&bytes[3..]).into_owned(),
         Encoding::Utf16Le => decode_utf16(&bytes[2..], true),
         Encoding::Utf16Be => decode_utf16(&bytes[2..], false),
-        Encoding::Utf8 => String::from_utf8_lossy(bytes).into_owned(),
-        Encoding::Windows1252 => decode_windows_1252(bytes),
+        Encoding::Utf8 | Encoding::Utf8With1252Fallback | Encoding::Windows1252 => {
+            let (text, fallback_bytes, has_multibyte_utf8) = decode_utf8_with_fallback(bytes);
+            if fallback_bytes == 0 {
+                // `detect` classified it as UTF-8: nothing to recover.
+                text
+            } else if has_multibyte_utf8 {
+                crate::warnings::warn(format!(
+                    "recovered {fallback_bytes} byte(s) as windows-1252 inside an otherwise UTF-8 file"
+                ));
+                return (text, Encoding::Utf8With1252Fallback);
+            } else {
+                // No valid multibyte UTF-8 anywhere: a genuine legacy file.
+                // Decoding byte-by-byte through cp1252 gives the same text as
+                // the whole-file path but keeps the reported encoding stable.
+                decode_windows_1252(bytes)
+            }
+        }
     };
     (text, encoding)
+}
+
+/// Decodes UTF-8, recovering each invalid byte sequence through windows-1252.
+///
+/// Returns the text, the number of recovered bytes and whether any valid
+/// non-ASCII UTF-8 sequence was seen (the signal that distinguishes a mixed
+/// file from a pure single-byte legacy file).
+fn decode_utf8_with_fallback(bytes: &[u8]) -> (String, usize, bool) {
+    let mut output = String::with_capacity(bytes.len());
+    let mut fallback_bytes = 0usize;
+    let mut has_multibyte_utf8 = false;
+    let mut position = 0usize;
+    while position < bytes.len() {
+        match std::str::from_utf8(&bytes[position..]) {
+            Ok(rest) => {
+                has_multibyte_utf8 |= rest.bytes().any(|byte| byte >= 0x80);
+                output.push_str(rest);
+                break;
+            }
+            Err(error) => {
+                let valid = error.valid_up_to();
+                // `valid_up_to()` guarantees this slice is valid UTF-8.
+                let prefix = std::str::from_utf8(&bytes[position..position + valid])
+                    .expect("valid_up_to prefix must be valid UTF-8");
+                has_multibyte_utf8 |= prefix.bytes().any(|byte| byte >= 0x80);
+                output.push_str(prefix);
+                position += valid;
+                // `error_len()` is None only for an incomplete tail, which we
+                // still consume one byte at a time to keep decoding total.
+                let invalid = error.error_len().unwrap_or(1).min(bytes.len() - position);
+                for &byte in &bytes[position..position + invalid] {
+                    output.push(windows_1252_byte(byte));
+                    fallback_bytes += 1;
+                }
+                position += invalid;
+            }
+        }
+    }
+    (output, fallback_bytes, has_multibyte_utf8)
 }
 
 fn decode_utf16(bytes: &[u8], little_endian: bool) -> String {

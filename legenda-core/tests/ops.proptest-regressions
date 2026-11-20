@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4136029ca0f1bf60f12b7251dc50066371c6a846852f9881312c974cecf77dcf # shrinks to mut cues = [PlainCue { start: Time(Rational { num: 27441, den: 500 }), end: Time(Rational { num: 54883, den: 1000 }), text: "olá" }, PlainCue { start: Time(Rational { num: 6541, den: 125 }), end: Time(Rational { num: 52329, den: 1000 }), text: "filme olá mundo filme filme falou olá mundo" }]
+cc 0f8182a5cd31699e0893cd8a1226670c0d8752cfc7bdcf4e7304b00ccb00c534 # shrinks to from_a = 0, from_gap = 1, to_a = 14995, to_gap = -149
+cc cf3b7c37625c13b95b7d997a2f4b6ec249c559d605943ec422d82876bbff0701 # shrinks to mut cues = [PlainCue { start: Time(Rational { num: 420477, den: 1000 }), end: Time(Rational { num: 210239, den: 500 }), text: "bem mundo rápido que falou hoje com gostou falou não olá falou não olá não olá não olá olá olá falou filme falou falou não olá falou não olá mundo mundo não de olá olá isso falou olá mundo não olá" }, PlainCue { start: Time(Rational { num: 41687, den: 100 }), end: Time(Rational { num: 210197, den: 500 }), text: "olá" }]

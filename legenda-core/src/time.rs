@@ -83,16 +83,16 @@ impl Rational {
         if rhs.num == 0 {
             return Err(Error::ZeroDenominator);
         }
+        // (a/b) / (c/d) = (a*d) / (b*c). The denominator is forced positive,
+        // so only the divisor's sign has to move onto the numerator: the
+        // dividend's sign is already carried by `self.num * rhs.den`. Flipping
+        // on the XOR of the two signs (the old bug) inverted the quotient
+        // whenever the dividend was negative.
+        let divisor_sign = if rhs.num < 0 { -1_i128 } else { 1_i128 };
         Self::from_i128(
-            self.num as i128 * rhs.den as i128,
+            (self.num as i128 * rhs.den as i128) * divisor_sign,
             self.den as u128 * rhs.num.unsigned_abs() as u128,
         )
-        .map(|mut value| {
-            if (self.num < 0) != (rhs.num < 0) {
-                value.num = -value.num;
-            }
-            value
-        })
     }
 
     /// Rounds to the nearest integer, with halves rounded away from zero.
@@ -136,11 +136,30 @@ impl fmt::Display for Rational {
     }
 }
 
+/// The most negative/positive exactly representable rational. The operator
+/// impls saturate to these instead of panicking: arithmetic inside a library
+/// must never abort the host process. Callers that need to detect overflow
+/// keep using the fallible `checked_*` methods.
+fn saturating(negative: bool) -> Rational {
+    if negative {
+        Rational::from_int(i64::MIN + 1)
+    } else {
+        Rational::from_int(i64::MAX)
+    }
+}
+
 impl Add for Rational {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self {
-        self.checked_add(rhs).expect("rational addition overflow")
+        match self.checked_add(rhs) {
+            Ok(value) => value,
+            Err(_) => {
+                let left = (self.num as i128).saturating_mul(rhs.den as i128);
+                let right = (rhs.num as i128).saturating_mul(self.den as i128);
+                saturating(left.saturating_add(right) < 0)
+            }
+        }
     }
 }
 
@@ -148,7 +167,14 @@ impl Sub for Rational {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self {
-        self.checked_sub(rhs).expect("rational subtraction overflow")
+        match self.checked_sub(rhs) {
+            Ok(value) => value,
+            Err(_) => {
+                let left = (self.num as i128).saturating_mul(rhs.den as i128);
+                let right = (rhs.num as i128).saturating_mul(self.den as i128);
+                saturating(left.saturating_sub(right) < 0)
+            }
+        }
     }
 }
 
@@ -156,7 +182,10 @@ impl Mul for Rational {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self {
-        self.checked_mul(rhs).expect("rational multiplication overflow")
+        match self.checked_mul(rhs) {
+            Ok(value) => value,
+            Err(_) => saturating((self.num < 0) != (rhs.num < 0)),
+        }
     }
 }
 
@@ -164,7 +193,11 @@ impl Div for Rational {
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self {
-        self.checked_div(rhs).expect("rational division by zero or overflow")
+        match self.checked_div(rhs) {
+            Ok(value) => value,
+            Err(Error::ZeroDenominator) if self.num == 0 => Self::ZERO,
+            Err(_) => saturating((self.num < 0) != (rhs.num < 0)),
+        }
     }
 }
 
@@ -235,8 +268,11 @@ impl Time {
     fn format_components(self, separator: char, fraction_digits: u32) -> String {
         let scale = if fraction_digits == 3 { 1_000 } else { 100 };
         let total = (self.0 * Rational::from_int(scale)).round();
-        let negative = total < 0;
-        let units = total.unsigned_abs() as u128;
+        // Subtitle file formats have no representation for times before zero.
+        // Writers must never emit "-00:00:05,000", which our own parser
+        // rejects; clamp defensively so every writer stays round-trippable.
+        let total = total.max(0);
+        let units = total as u128;
         let fraction_base = 10_u128.pow(fraction_digits);
         let fraction = units % fraction_base;
         let seconds_total = units / fraction_base;
@@ -244,8 +280,7 @@ impl Time {
         let minutes = (seconds_total / 60) % 60;
         let hours = seconds_total / 3_600;
         format!(
-            "{}{:02}:{:02}:{:02}{}{:0width$}",
-            if negative { "-" } else { "" },
+            "{:02}:{:02}:{:02}{}{:0width$}",
             hours,
             minutes,
             seconds,
@@ -395,6 +430,52 @@ mod tests {
     }
 
     #[test]
+    fn division_sign_is_correct_for_every_sign_combination() {
+        // Hand-derived sign table: a/b has sign(a) * sign(b). The old
+        // implementation built the quotient from |divisor| and then flipped
+        // the sign whenever dividend and divisor differed, which produced
+        // the OPPOSITE sign whenever the dividend was negative:
+        //   (-1)/(-2) -> -1/2 instead of  1/2
+        //   (-1)/2    ->  1/2 instead of -1/2
+        // This flipped every cue of a two-point sync whose target times ran
+        // in descending order.
+        let one = Rational::from_int(1);
+        let minus_one = Rational::from_int(-1);
+        let two = Rational::from_int(2);
+        let minus_two = Rational::from_int(-2);
+        assert_eq!(minus_one.checked_div(minus_two).unwrap().to_string(), "1/2");
+        assert_eq!(minus_one.checked_div(two).unwrap().to_string(), "-1/2");
+        assert_eq!(one.checked_div(minus_two).unwrap().to_string(), "-1/2");
+        assert_eq!(one.checked_div(two).unwrap().to_string(), "1/2");
+        assert_eq!(
+            Rational::new(-3, 4).unwrap().checked_div(Rational::new(3, 4).unwrap()).unwrap(),
+            Rational::from_int(-1)
+        );
+        assert_eq!(
+            Rational::new(-3, 4).unwrap().checked_div(Rational::new(-3, 4).unwrap()).unwrap(),
+            Rational::ONE
+        );
+    }
+
+    #[test]
+    fn operator_impls_saturate_instead_of_panicking() {
+        // Library code must never panic on arithmetic (review opinion item):
+        // the operator impls saturate at the extreme representable values.
+        let huge = Rational::new(i64::MAX, 1).unwrap();
+        let minus_huge = Rational::new(i64::MIN + 1, 1).unwrap();
+        assert_eq!(huge + huge, huge);
+        assert_eq!(minus_huge + minus_huge, minus_huge);
+        assert_eq!(minus_huge - huge, minus_huge);
+        assert_eq!(huge * huge, huge);
+        assert_eq!(minus_huge * huge, minus_huge);
+        // Division by zero saturates to the extreme value with the
+        // dividend's sign; a zero dividend stays zero.
+        assert_eq!(huge / Rational::ZERO, huge);
+        assert_eq!(minus_huge / Rational::ZERO, minus_huge);
+        assert_eq!(Rational::ZERO / Rational::ZERO, Rational::ZERO);
+    }
+
+    #[test]
     fn fractions_order_exactly() {
         let one_third = Rational::new(1, 3).unwrap();
         let three_tenths = Rational::new(3, 10).unwrap();
@@ -459,6 +540,67 @@ mod tests {
             let shifted = original.as_rational() + Rational::from_int(shift) / Rational::from_int(1000);
             let unshifted = shifted - Rational::from_int(shift) / Rational::from_int(1000);
             prop_assert_eq!(unshifted, original.as_rational());
+        }
+
+        /// Independent oracle: the same fraction arithmetic implemented from
+        /// scratch on i128 inside the test (cross-multiplied, then reduced by
+        /// gcd), never via `Rational` itself. All four operations must agree
+        /// with it exactly, for every sign combination.
+        #[test]
+        fn rational_arithmetic_matches_independent_i128_math(
+            an in -9_000i64..9_000, ad in 1u64..9_000,
+            bn in -9_000i64..9_000, bd in 1u64..9_000,
+        ) {
+            fn reduced(mut num: i128, mut den: i128) -> (i128, i128) {
+                assert!(den != 0);
+                if den < 0 {
+                    num = -num;
+                    den = -den;
+                }
+                let mut a = num.unsigned_abs();
+                let mut b = den as u128;
+                while b != 0 {
+                    let remainder = a % b;
+                    a = b;
+                    b = remainder;
+                }
+                let divisor = a as i128;
+                if divisor != 0 {
+                    num /= divisor;
+                    den /= divisor;
+                }
+                (num, den)
+            }
+
+            let a = Rational::new(an, ad).unwrap();
+            let b = Rational::new(bn, bd).unwrap();
+
+            let (sum_num, sum_den) =
+                reduced(an as i128 * bd as i128 + bn as i128 * ad as i128, ad as i128 * bd as i128);
+            let sum = a.checked_add(b).unwrap();
+            prop_assert_eq!((sum.num() as i128, sum.den() as i128), (sum_num, sum_den));
+
+            let (difference_num, difference_den) =
+                reduced(an as i128 * bd as i128 - bn as i128 * ad as i128, ad as i128 * bd as i128);
+            let difference = a.checked_sub(b).unwrap();
+            prop_assert_eq!(
+                (difference.num() as i128, difference.den() as i128),
+                (difference_num, difference_den)
+            );
+
+            let (product_num, product_den) = reduced(an as i128 * bn as i128, ad as i128 * bd as i128);
+            let product = a.checked_mul(b).unwrap();
+            prop_assert_eq!((product.num() as i128, product.den() as i128), (product_num, product_den));
+
+            if bn != 0 {
+                let (quotient_num, quotient_den) =
+                    reduced(an as i128 * bd as i128, ad as i128 * bn as i128);
+                let quotient = a.checked_div(b).unwrap();
+                prop_assert_eq!(
+                    (quotient.num() as i128, quotient.den() as i128),
+                    (quotient_num, quotient_den)
+                );
+            }
         }
     }
 }

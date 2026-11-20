@@ -207,12 +207,13 @@ fn safe_caption_copy(captions: &Path) -> Result<(PathBuf, TempCaption)> {
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
     let directory = std::env::temp_dir()
         .join(format!("legenda-burn-{nanos}-{}-{sequence}", std::process::id()));
-    std::fs::create_dir_all(&directory)?;
+    std::fs::create_dir_all(&directory)
+        .map_err(|source| Error::IoWithPath { path: directory.clone(), source })?;
     let guard = TempCaption { directory: directory.clone() };
     let path = directory.join("captions.ass");
-    if let Err(error) = std::fs::copy(captions, &path) {
+    if let Err(source) = std::fs::copy(captions, &path) {
         drop(guard);
-        return Err(error.into());
+        return Err(Error::IoWithPath { path: captions.to_path_buf(), source });
     }
     Ok((path, guard))
 }

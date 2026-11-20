@@ -5,7 +5,9 @@
 //! * **WhisperX**: `segments[].words[]` with `word`, `start`, `end`, `score`
 //!   (times in seconds).
 //! * **whisper.cpp** `-ojf`: `transcription[].tokens[]` with `text` and
-//!   `offsets: { start, end }` (times in milliseconds).
+//!   `offsets: { from, to }` (milliseconds, written as `t0 * 10` by the
+//!   official `times_o()` writer in `examples/cli/cli.cpp`). Legacy
+//!   `start`/`end` keys are also accepted.
 //! * **OpenAI** `verbose_json`: top-level `words[]` with `word`, `start`,
 //!   `end` (times in seconds), optionally accompanied by `segments[]`.
 //!
@@ -154,23 +156,29 @@ fn parse_whisper_cpp(value: &Value) -> Result<Vec<Segment>> {
     let mut result = Vec::with_capacity(entries.len());
     for entry in entries {
         let offsets = entry.get("offsets");
-        let start = millis_value(offsets.and_then(|offsets| offsets.get("start")));
-        let end = millis_value(offsets.and_then(|offsets| offsets.get("end")));
+        let start = offset_value(offsets, "from", "start");
+        let end = offset_value(offsets, "to", "end");
         let raw: Vec<RawWord> = if let Some(tokens) = entry.get("tokens").and_then(Value::as_array)
         {
             tokens
                 .iter()
                 .filter_map(|token| {
                     let text = clean_word(token.get("text").and_then(Value::as_str));
-                    if text.is_empty() {
+                    // The full JSON also contains control tokens such as
+                    // `<|endoftext|>` and `<|startoftranscript|>`; they carry
+                    // no timings and are not words a viewer should see.
+                    if text.is_empty() || is_special_token(&text) {
                         return None;
                     }
                     let token_offsets = token.get("offsets");
                     Some(RawWord {
                         text,
-                        start: millis_value(token_offsets.and_then(|o| o.get("start"))),
-                        end: millis_value(token_offsets.and_then(|o| o.get("end"))),
-                        score: None,
+                        start: offset_value(token_offsets, "from", "start"),
+                        end: offset_value(token_offsets, "to", "end"),
+                        score: token
+                            .get("p")
+                            .and_then(Value::as_f64)
+                            .filter(|probability| probability.is_finite()),
                     })
                 })
                 .collect()
@@ -463,6 +471,23 @@ fn seconds_value(value: Option<&Value>) -> Option<Time> {
     }
     let micros = (number * 1_000_000.0).round() as i64;
     Some(Time::from_rational_seconds(Rational::new(micros, 1_000_000).ok()?))
+}
+
+/// Reads a millisecond timestamp from a whisper.cpp `offsets` object.
+///
+/// The official writer emits `{"from": t0*10, "to": t1*10}` where t0/t1 are
+/// centiseconds, i.e. integer milliseconds. `start`/`end` are accepted as a
+/// legacy alias so third-party exporters keep working.
+fn offset_value(offsets: Option<&Value>, name: &str, legacy: &str) -> Option<Time> {
+    let offsets = offsets?;
+    millis_value(offsets.get(name)).or_else(|| millis_value(offsets.get(legacy)))
+}
+
+/// True for whisper.cpp control tokens (`<|endoftext|>` and friends), which
+/// are never spoken words.
+fn is_special_token(text: &str) -> bool {
+    (text.starts_with("<|") && text.ends_with("|>"))
+        || (text.starts_with("[_") && text.ends_with("_]"))
 }
 
 /// Reads a time in milliseconds (whisper.cpp) from JSON.

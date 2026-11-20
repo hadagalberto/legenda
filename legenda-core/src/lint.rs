@@ -192,8 +192,8 @@ pub fn lint(cues: &[PlainCue], config: &LintConfig) -> Vec<LintIssue> {
                     number,
                     LintRule::Overlap,
                     "cue overlaps the previous cue",
-                    cue.start.as_millis().to_f64(),
-                    end.as_millis().to_f64(),
+                    cue.start.as_secs_f64(),
+                    end.as_secs_f64(),
                 ));
             } else if let Ok(gap) = cue.start.as_rational().checked_sub(end.as_rational()) {
                 if gap < config.min_gap.as_rational() {

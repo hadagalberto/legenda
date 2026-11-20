@@ -1,0 +1,38 @@
+{
+  "systeminfo": "whisper.cpp upstream revision; AVX2; 8 threads",
+  "model": {
+    "type": "small",
+    "multilingual": true,
+    "vocab": 51865,
+    "audio": {"ctx": 1500, "state": 1024, "head": 8, "layer": 12},
+    "text": {"ctx": 448, "state": 768, "head": 12, "layer": 12},
+    "mels": 80,
+    "ftype": 1
+  },
+  "params": {"model": "models/ggml-small.bin", "language": "pt", "translate": false},
+  "result": {"language": "pt"},
+  "transcription": [
+    {
+      "timestamps": {"from": "00:00:01,000", "to": "00:00:02,500"},
+      "offsets": {"from": 1000, "to": 2500},
+      "text": " Olá mundo",
+      "tokens": [
+        {"text": "<|startoftranscript|>", "id": 50258, "p": 0.994, "t_dtw": -1.0},
+        {"text": " Olá", "offsets": {"from": 1000, "to": 1600}, "id": 1, "p": 0.91, "t_dtw": -1.0},
+        {"text": " mundo", "offsets": {"from": 1650, "to": 2500}, "id": 2, "p": 0.87, "t_dtw": -1.0},
+        {"text": "<|endoftext|>", "id": 50257, "p": 0.076, "t_dtw": -1.0}
+      ]
+    },
+    {
+      "timestamps": {"from": "00:00:02,600", "to": "00:00:03,200"},
+      "offsets": {"from": 2600, "to": 3200},
+      "text": " Tudo bem?",
+      "tokens": [
+        {"text": "[_BEG_]", "id": 50363, "p": 0.842, "t_dtw": -1.0},
+        {"text": " Tudo", "offsets": {"from": 2600, "to": 2900}, "id": 3, "p": 0.72, "t_dtw": -1.0},
+        {"text": " bem?", "offsets": {"from": 2950, "to": 3200}, "id": 4, "p": 0.66, "t_dtw": -1.0},
+        {"text": "[_EOT_]", "id": 50257, "p": 0.09, "t_dtw": -1.0}
+      ]
+    }
+  ]
+}

@@ -19,7 +19,7 @@
 use crate::error::Result;
 use crate::lint::LintConfig;
 use crate::model::PlainCue;
-use crate::ops::{sort_and_fix_gaps, visible_char_count, FrameRate};
+use crate::ops::{visible_char_count, FrameRate};
 use crate::time::{Rational, Time};
 
 /// A reflow preset.
@@ -285,82 +285,71 @@ fn best_break(pieces: &[WordPiece], start: usize, max_chars: usize) -> Option<us
     best.map(|(boundary, _)| boundary)
 }
 
-fn fallback_break(pieces: &[WordPiece], start: usize) -> usize {
-    let total = span_length(&pieces[start..]);
-    let mut best = start + 1;
-    let mut best_difference = usize::MAX;
+/// Chooses the rightmost break whose left side still fits, preferring a
+/// linguistic boundary on ties. Used when more than two lines are needed and
+/// [`best_break`] (which requires *both* sides to fit) has no candidate.
+fn greedy_break(pieces: &[WordPiece], start: usize, max_chars: usize) -> Option<usize> {
+    let mut best: Option<(usize, i32, usize)> = None;
     for boundary in start + 1..pieces.len() {
         let left = span_length(&pieces[start..boundary]);
-        let right = total.saturating_sub(left + 1);
-        let difference = left.abs_diff(right);
-        if difference < best_difference {
-            best_difference = difference;
-            best = boundary;
+        if left > max_chars {
+            break;
+        }
+        let right = span_length(&pieces[boundary..]);
+        let score = break_score(
+            &pieces[boundary - 1].word,
+            &pieces[boundary].word,
+            left,
+            right,
+            boundary - start,
+        );
+        if best.is_none_or(|(best_left, best_score, _)| (left, score) > (best_left, best_score)) {
+            best = Some((left, score, boundary));
         }
     }
-    best
+    best.map(|(_, _, boundary)| boundary)
 }
 
-/// Wraps word pieces into at most `max_lines` lines.
-fn wrap(pieces: &[WordPiece], max_chars: usize, max_lines: usize) -> Vec<String> {
+/// Packs word pieces into visual lines. Unlike the old `wrap`, overflow is
+/// never appended to the final line: a long cue produces more lines, which
+/// the caller then splits across cues. Each line is within `max_chars`
+/// whenever the longest individual word allows it.
+fn pack_lines(pieces: &[WordPiece], max_chars: usize) -> Vec<Vec<WordPiece>> {
     if pieces.is_empty() {
         return Vec::new();
     }
     let mut lines = Vec::new();
     let mut start = 0;
-    while start < pieces.len() && lines.len() < max_lines {
-        if lines.len() + 1 == max_lines || span_length(&pieces[start..]) <= max_chars {
-            lines.push(rebuild(&pieces[start..]));
-            start = pieces.len();
+    while start < pieces.len() {
+        if span_length(&pieces[start..]) <= max_chars {
+            lines.push(pieces[start..].to_vec());
             break;
         }
-        let boundary =
-            best_break(pieces, start, max_chars).unwrap_or_else(|| fallback_break(pieces, start));
-        lines.push(rebuild(&pieces[start..boundary]));
+        let boundary = best_break(pieces, start, max_chars)
+            .or_else(|| greedy_break(pieces, start, max_chars))
+            .unwrap_or(start + 1);
+        lines.push(pieces[start..boundary].to_vec());
         start = boundary;
-    }
-    if start < pieces.len() {
-        if let Some(last) = lines.last_mut() {
-            last.push(' ');
-            last.push_str(&rebuild(&pieces[start..]));
-        } else {
-            lines.push(rebuild(&pieces[start..]));
-        }
     }
     lines
 }
 
-fn time_add(time: Time, delta: Rational) -> Result<Time> {
-    Ok(Time::from_rational_seconds(time.as_rational().checked_add(delta)?))
+/// Visual lines for the line-breaking unit tests.
+#[cfg(test)]
+fn wrap_lines(pieces: &[WordPiece], max_chars: usize) -> Vec<String> {
+    pack_lines(pieces, max_chars).iter().map(|line| rebuild(line)).collect()
 }
 
-/// Splits a cue's word pieces into `groups`, distributing the cue's duration
-/// proportionally to the visible character count of each group.
-fn regroup(cue: &PlainCue, groups: Vec<Vec<WordPiece>>) -> Result<Vec<PlainCue>> {
-    if groups.is_empty() {
-        return Ok(Vec::new());
-    }
-    let lengths: Vec<usize> = groups.iter().map(|group| span_length(group)).collect();
-    let total: usize = lengths.iter().sum();
-    let group_count = lengths.len();
-    let duration = cue.end.as_rational().checked_sub(cue.start.as_rational())?;
-    let mut cursor = cue.start;
-    let mut result = Vec::with_capacity(group_count);
-    for (position, (group, length)) in groups.into_iter().zip(lengths).enumerate() {
-        let end = if position + 1 == group_count {
-            cue.end
-        } else if total == 0 {
-            let share = duration.checked_div(Rational::from_int(group_count as i64))?;
-            time_add(cursor, share)?
-        } else {
-            let fraction =
-                Rational::from_int(length as i64).checked_div(Rational::from_int(total as i64))?;
-            time_add(cursor, duration.checked_mul(fraction)?)?
-        };
-        result.push(PlainCue { start: cursor, end, text: rebuild(&group) });
-        cursor = end;
-    }
-    Ok(result)
+/// Groups visual lines into cue texts of at most `max_lines` lines.
+fn group_texts(lines: Vec<Vec<WordPiece>>, max_lines: usize) -> Vec<String> {
+    lines
+        .chunks(max_lines)
+        .map(|group| group.iter().map(|line| rebuild(line)).collect::<Vec<_>>().join("\n"))
+        .collect()
+}
+
+fn time_add(time: Time, delta: Rational) -> Result<Time> {
+    Ok(Time::from_rational_seconds(time.as_rational().checked_add(delta)?))
 }
 
 fn chunk_pieces(pieces: Vec<WordPiece>, group_count: usize) -> Vec<Vec<WordPiece>> {
@@ -383,42 +372,111 @@ fn page_pieces(pieces: Vec<WordPiece>, words_per_page: usize) -> Vec<Vec<WordPie
     pieces.chunks(words_per_page).map(|chunk| chunk.to_vec()).collect()
 }
 
-/// Reflows cues in place: pages, wraps lines by the preset's linguistic rules,
-/// splits over-long events, and extends timings until reading speed and
-/// minimum duration are within limits. Later cues are shifted forward by the
-/// same amount whenever an event is extended, preserving gaps and ordering.
-pub fn reflow(cues: &mut Vec<PlainCue>, options: &ReflowOptions) -> Result<()> {
-    sort_and_fix_gaps(cues, options.min_gap)?;
-
-    // Shorts: break long events into pages of roughly four words.
-    let mut paged = Vec::new();
-    for cue in cues.iter() {
-        let pieces = tokenize(&cue.text);
-        paged.extend(regroup(cue, page_pieces(pieces, options.words_per_page))?);
+/// Distributes a source cue's interval across its already-wrapped texts.
+///
+/// The source start is kept. Sub-cues get the minimum gap between them, and
+/// their ends may extend into the free time before the *next source cue* but
+/// never past `limit` (the next source start minus one minimum gap). Any
+/// reading-speed requirement that cannot be met inside that budget is left
+/// for `lint` to report instead of moving the following subtitle out of sync.
+fn regroup_texts(
+    cue: &PlainCue,
+    texts: Vec<String>,
+    limit: Option<Time>,
+    options: &ReflowOptions,
+) -> Result<Vec<PlainCue>> {
+    if texts.is_empty() {
+        return Ok(Vec::new());
     }
-    *cues = paged;
+    let weights: Vec<usize> = texts.iter().map(|text| visible_char_count(text).max(1)).collect();
+    let total: usize = weights.iter().sum();
+    let duration = cue.end.as_rational().checked_sub(cue.start.as_rational())?;
+    let gap = options.min_gap.as_rational();
+    let min_duration = options.min_duration.as_rational();
+    let count = texts.len();
+    let mut cursor = cue.start;
+    let mut result = Vec::with_capacity(count);
 
-    // Netflix: an event longer than the maximum duration is split at word
-    // boundaries into the smallest number of events that fit.
-    let mut duration_split = Vec::new();
-    for cue in cues.iter() {
-        let duration = cue.end.as_rational().checked_sub(cue.start.as_rational())?;
-        let limit = options.max_duration.as_rational();
-        if duration <= limit || limit <= Rational::ZERO {
-            duration_split.push(cue.clone());
-            continue;
+    for (index, (text, weight)) in texts.into_iter().zip(weights).enumerate() {
+        let proportional_end = if index + 1 == count {
+            cue.end
+        } else {
+            let fraction =
+                Rational::from_int(weight as i64).checked_div(Rational::from_int(total as i64))?;
+            time_add(cue.start, duration.checked_mul(fraction)?)?
+        };
+        let start = if index == 0 { cue.start } else { cursor };
+
+        let characters = visible_char_count(&text);
+        let reading_time = Rational::from_int(characters as i64).checked_div(options.max_cps)?;
+        let required = ceil_millis(Time::from_rational_seconds(reading_time.max(min_duration)))?;
+        let required_end = time_add(start, required.as_rational())?;
+        let mut end = if proportional_end > required_end { proportional_end } else { required_end };
+
+        // Never cross the next source cue's start. This is the design fix for
+        // the CPS extension that used to shift every later cue forward.
+        if let Some(limit) = limit {
+            if end > limit {
+                end = limit;
+            }
         }
-        let ratio = duration.checked_div(limit)?;
-        let groups_needed = (ratio.num() + ratio.den() as i64 - 1) / ratio.den() as i64;
-        let groups = chunk_pieces(tokenize(&cue.text), groups_needed as usize);
-        duration_split.extend(regroup(cue, groups)?);
+        if end <= start {
+            let next_ms = Time::from_millis(start.as_millis().num() + 1);
+            end = match limit {
+                Some(limit) if limit > start && limit < next_ms => limit,
+                _ => next_ms,
+            };
+        }
+
+        result.push(PlainCue { start, end, text });
+        cursor = time_add(end, gap)?;
     }
-    *cues = duration_split;
-    sort_and_fix_gaps(cues, options.min_gap)?;
+    Ok(result)
+}
+
+/// Sorts cues chronologically and restores the minimum gap by pulling the
+/// earlier cue's end back. Unlike `ops::sort_and_fix_gaps` this never moves a
+/// later cue's start, which is the core of the CPS-desync finding.
+fn sort_and_fix_gaps_in_place(cues: &mut [PlainCue], min_gap: Time) -> Result<()> {
+    cues.sort_by(|a, b| a.start.cmp(&b.start).then_with(|| a.end.cmp(&b.end)));
+    let gap = min_gap.as_rational();
+    for cue in cues.iter_mut() {
+        if cue.end <= cue.start {
+            cue.end = time_add(cue.start, gap)?;
+        }
+    }
+    for index in 0..cues.len().saturating_sub(1) {
+        let latest_end = cues[index + 1].start.as_rational().checked_sub(gap)?;
+        if cues[index].end.as_rational() > latest_end {
+            cues[index].end = Time::from_rational_seconds(latest_end);
+        }
+        if cues[index].end <= cues[index].start {
+            cues[index].end = Time::from_millis(cues[index].start.as_millis().num() + 1);
+        }
+        // If the previous cue had no room to shrink, nudge the following cues
+        // by the few milliseconds still needed. This is a gap repair, never a
+        // CPS-driven shift of seconds.
+        let required_start = time_add(cues[index].end, gap)?;
+        if cues[index + 1].start < required_start {
+            let shift =
+                required_start.as_rational().checked_sub(cues[index + 1].start.as_rational())?;
+            for following in cues.iter_mut().skip(index + 1) {
+                following.start = time_add(following.start, shift)?;
+                following.end = time_add(following.end, shift)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Reflows cues in place: splits long events across time, wraps each piece by
+/// the preset's linguistic rules and extends timings up to (but never past)
+/// the gap before the following source cue.
+pub fn reflow(cues: &mut Vec<PlainCue>, options: &ReflowOptions) -> Result<()> {
+    sort_and_fix_gaps_in_place(cues, options.min_gap)?;
 
     // Serialisation uses millisecond precision. Quantise every timestamp up
-    // to a whole millisecond, then restore the minimum gap on that exact
-    // grid so the written file keeps the invariants verified here.
+    // to a whole millisecond, then restore the minimum gap on that exact grid.
     for cue in cues.iter_mut() {
         cue.start = ceil_millis(cue.start)?;
         cue.end = ceil_millis(cue.end)?;
@@ -426,38 +484,52 @@ pub fn reflow(cues: &mut Vec<PlainCue>, options: &ReflowOptions) -> Result<()> {
             cue.end = Time::from_millis(cue.start.as_millis().num() + 1);
         }
     }
-    sort_and_fix_gaps(cues, options.min_gap)?;
+    sort_and_fix_gaps_in_place(cues, options.min_gap)?;
 
-    // Wrap text according to the preset's line-break rules.
-    for cue in cues.iter_mut() {
-        let pieces = tokenize(&cue.text);
-        let lines = wrap(&pieces, options.max_chars_per_line, options.max_lines);
-        cue.text = lines.join("\n");
-    }
+    // Absolute end limit per source cue: next source start minus one gap.
+    // Collected before any splitting so later source cues are never moved.
+    let limits = cues
+        .iter()
+        .enumerate()
+        .map(|(index, _cue)| -> Result<Option<Time>> {
+            if index + 1 < cues.len() {
+                let start = cues[index + 1]
+                    .start
+                    .as_rational()
+                    .checked_sub(options.min_gap.as_rational())?;
+                Ok(Some(Time::from_rational_seconds(start)))
+            } else {
+                Ok(None)
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
 
-    // CPS and minimum-duration enforcement. Requirement is
-    // max(min_duration, visible_characters / max_cps); extending the current
-    // event and shifting all following events keeps gaps and ordering intact.
-    for index in 0..cues.len() {
-        let characters = visible_char_count(&cues[index].text);
-        let reading_time = Rational::from_int(characters as i64).checked_div(options.max_cps)?;
-        let required = if reading_time > options.min_duration.as_rational() {
-            ceil_millis(Time::from_rational_seconds(reading_time))?
+    let max_duration = options.max_duration.as_rational();
+    let mut result = Vec::new();
+    for (cue, limit) in cues.iter().zip(limits) {
+        let duration = cue.end.as_rational().checked_sub(cue.start.as_rational())?;
+        let groups_needed = if max_duration > Rational::ZERO && duration > max_duration {
+            let ratio = duration.checked_div(max_duration)?;
+            ((ratio.num() + ratio.den() as i64 - 1) / ratio.den() as i64).max(1)
         } else {
-            ceil_millis(options.min_duration)?
+            1
         };
-        let duration =
-            cues[index].end.as_rational().checked_sub(cues[index].start.as_rational())?;
-        if duration < required.as_rational() {
-            let delta = required.as_rational().checked_sub(duration)?;
-            cues[index].end = time_add(cues[index].end, delta)?;
-            for following in cues.iter_mut().skip(index + 1) {
-                following.start = time_add(following.start, delta)?;
-                following.end = time_add(following.end, delta)?;
+
+        let pages = page_pieces(tokenize(&cue.text), options.words_per_page);
+        let mut lines = Vec::new();
+        for page in pages {
+            for chunk in chunk_pieces(page, groups_needed as usize) {
+                lines.extend(pack_lines(&chunk, options.max_chars_per_line));
             }
         }
+        let texts = group_texts(lines, options.max_lines);
+        result.extend(regroup_texts(cue, texts, limit, options)?);
     }
-
+    *cues = result;
+    // Sub-cues are appended in source order. In physically over-dense inputs
+    // a sub-cue can be pushed past the following source cue's start; sorting
+    // keeps the document in a valid, monotonic timeline for every writer.
+    cues.sort_by(|a, b| a.start.cmp(&b.start).then_with(|| a.end.cmp(&b.end)));
     Ok(())
 }
 
@@ -503,7 +575,7 @@ mod tests {
     fn wraps_after_punctuation_and_before_preposition() {
         let text = "Eu queria falar com vocês. Sobre isso, amanhã.";
         let pieces = tokenize(text);
-        let lines = wrap(&pieces, 42, 2);
+        let lines = wrap_lines(&pieces, 42);
         assert_eq!(lines.len(), 2);
         assert_eq!(lines.join(" "), text);
         assert!(lines.iter().all(|line| visible_char_count(line) <= 42));
@@ -515,7 +587,7 @@ mod tests {
     fn never_splits_article_from_noun_when_alternative_exists() {
         let text = "Ela viu o filme ontem e gostou muito";
         let pieces = tokenize(text);
-        let lines = wrap(&pieces, 20, 2);
+        let lines = wrap_lines(&pieces, 20);
         assert_eq!(lines.len(), 2);
         assert!(!lines[0].trim_end().ends_with("o"));
         assert!(!lines[1].starts_with("filme"));
@@ -539,7 +611,11 @@ mod tests {
 
         let lint_config = LintConfig::netflix_ptbr(FrameRate::FPS_24, false).unwrap();
         let report = crate::lint::LintReport::new(&cues, &lint_config);
-        assert!(!report.issues.iter().any(|item| item.rule == crate::lint::LintRule::Cps));
+        // Review finding 5: this assertion used to require zero CPS violations,
+        // which was only achievable by shifting every later cue forward (the
+        // 4th cue moved from 10 s to 19 s) and desynchronising the file. CPS
+        // extension now stops at the available gap and lint reports any
+        // residual violation instead. Layout and timing invariants remain hard.
         assert!(!report.issues.iter().any(|item| item.rule == crate::lint::LintRule::LineLength));
         assert!(!report.issues.iter().any(|item| item.rule == crate::lint::LintRule::TooManyLines));
         assert!(!report.issues.iter().any(|item| item.rule == crate::lint::LintRule::Overlap));
@@ -560,7 +636,7 @@ mod tests {
     fn markup_survives_wrapping() {
         let text = "<i>Primeira frase com ênfase.</i> Segunda parte bem longa aqui.";
         let pieces = tokenize(text);
-        let lines = wrap(&pieces, 42, 2);
+        let lines = wrap_lines(&pieces, 42);
         assert_eq!(lines.join(" "), text);
         assert!(lines[0].contains("<i>"));
         assert_eq!(visible_text(&lines.join(" ")), visible_text(text));
