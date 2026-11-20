@@ -59,6 +59,18 @@ pub enum Error {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
+    /// A path cannot be represented as UTF-8 for an ffmpeg filter argument.
+    #[error("path is not valid UTF-8: {0:?}")]
+    NonUtf8Path(std::path::PathBuf),
+
+    /// The external ffmpeg process exited unsuccessfully.
+    #[error("ffmpeg failed: {0}")]
+    FfmpegFailed(String),
+
+    /// A colour literal is not a valid `#RRGGBB[AA]` value.
+    #[error("invalid colour {0:?}: expected #RRGGBB or #RRGGBBAA")]
+    InvalidColour(String),
+
     /// Wraps an underlying I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),

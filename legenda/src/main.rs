@@ -3,14 +3,19 @@
 #![deny(warnings)]
 
 use std::path::{Path, PathBuf};
+use std::process::Command as StdCommand;
 
 use clap::{Parser, Subcommand};
+use legenda_core::burn::{self, BurnOptions};
 use legenda_core::encoding;
 use legenda_core::error::Result;
+use legenda_core::karaoke::{self, KaraokeOptions, KaraokePreset};
 use legenda_core::lint::{LintConfig, LintReport};
 use legenda_core::ops::{self, FrameRate};
 use legenda_core::reflow::{self, Preset};
-use legenda_core::{convert, Error, Format, PlainCue, Subtitle};
+use legenda_core::time::Time;
+use legenda_core::transcript;
+use legenda_core::{ass, convert, Error, Format, PlainCue, Subtitle};
 
 #[derive(Debug, Parser)]
 #[command(name = "legenda", version, about = "Fast subtitle parsing, writing and conversion")]
@@ -156,6 +161,78 @@ enum Command {
         /// Use children's reading-speed limits.
         #[arg(long)]
         children: bool,
+    },
+    /// Turn a word-level ASR transcript into animated karaoke ASS captions.
+    Karaoke {
+        /// WhisperX, whisper.cpp `-ojf` or OpenAI `verbose_json` transcript.
+        input: PathBuf,
+        /// Output ASS file.
+        #[arg(short = 'o', long)]
+        output: PathBuf,
+        /// Visual preset: `hormozi`, `clean`, `karaoke` or `bounce`.
+        #[arg(long, default_value = "hormozi")]
+        preset: String,
+        /// Font family written to the ASS style.
+        #[arg(long)]
+        font: Option<String>,
+        /// Font size in script pixels.
+        #[arg(long)]
+        font_size: Option<u32>,
+        /// Outline width in script pixels.
+        #[arg(long)]
+        outline: Option<u32>,
+        /// Shadow distance in script pixels.
+        #[arg(long)]
+        shadow: Option<u32>,
+        /// Left safe-area margin in pixels.
+        #[arg(long)]
+        safe_left: Option<u32>,
+        /// Right safe-area margin in pixels.
+        #[arg(long)]
+        safe_right: Option<u32>,
+        /// Top safe-area margin in pixels.
+        #[arg(long)]
+        safe_top: Option<u32>,
+        /// Bottom safe-area margin in pixels.
+        #[arg(long)]
+        safe_bottom: Option<u32>,
+        /// Canvas width in pixels (default 1080).
+        #[arg(long)]
+        width: Option<u32>,
+        /// Canvas height in pixels (default 1920).
+        #[arg(long)]
+        height: Option<u32>,
+        /// Words rendered in the emphasis colour (repeatable).
+        #[arg(long)]
+        emphasis: Vec<String>,
+        /// Maximum words per caption page.
+        #[arg(long)]
+        words_per_page: Option<usize>,
+        /// Maximum characters per caption page.
+        #[arg(long)]
+        max_chars: Option<usize>,
+        /// Pause in milliseconds that starts a new page (default 300).
+        #[arg(long)]
+        pause_ms: Option<u64>,
+    },
+    /// Burn ASS captions into a video with ffmpeg.
+    Burn {
+        /// Input video file.
+        video: PathBuf,
+        /// ASS caption file.
+        captions: PathBuf,
+        /// Output video file.
+        #[arg(short = 'o', long)]
+        output: PathBuf,
+        /// Video encoder, e.g. `libx264` or `h264_nvenc`.
+        #[arg(long, default_value = "libx264")]
+        encoder: String,
+        /// Encoder option in `key=value` form (repeatable).
+        #[arg(long)]
+        encoder_option: Vec<String>,
+        /// Path to the ffmpeg executable (default `ffmpeg` on PATH).
+        #[arg(long)]
+        ffmpeg: Option<PathBuf>,
     },
 }
 
@@ -333,6 +410,100 @@ fn execute() -> Result<i32> {
             let result = ops::with_cues(&subtitle, &cues)?;
             write_subtitle(&output, &result)?;
             println!("reflowed {} cues with preset {}", cues.len(), selected.name());
+        }
+        Command::Karaoke {
+            input,
+            output,
+            preset,
+            font,
+            font_size,
+            outline,
+            shadow,
+            safe_left,
+            safe_right,
+            safe_top,
+            safe_bottom,
+            width,
+            height,
+            emphasis,
+            words_per_page,
+            max_chars,
+            pause_ms,
+        } => {
+            let selected = KaraokePreset::parse(&preset)?;
+            let mut options = KaraokeOptions::new(selected);
+            if let Some(font) = font {
+                options.font = font;
+            }
+            if let Some(size) = font_size {
+                if size == 0 {
+                    return Err(Error::Parse {
+                        format: "karaoke",
+                        message: "font size must be greater than zero".to_owned(),
+                    });
+                }
+                options.font_size = size;
+            }
+            if let Some(outline) = outline {
+                options.outline = outline;
+            }
+            if let Some(shadow) = shadow {
+                options.shadow = shadow;
+            }
+            if let Some(margin) = safe_left {
+                options.safe_area.left = margin;
+            }
+            if let Some(margin) = safe_right {
+                options.safe_area.right = margin;
+            }
+            if let Some(margin) = safe_top {
+                options.safe_area.top = margin;
+            }
+            if let Some(margin) = safe_bottom {
+                options.safe_area.bottom = margin;
+            }
+            if let Some(width) = width {
+                options.width = width;
+            }
+            if let Some(height) = height {
+                options.height = height;
+            }
+            if let Some(words) = words_per_page {
+                options.page.max_words = words;
+            }
+            if let Some(chars) = max_chars {
+                options.page.max_chars = chars;
+            }
+            if let Some(millis) = pause_ms {
+                options.page.pause_threshold = Time::from_millis(millis as i64);
+            }
+            options.emphasis = emphasis;
+            let json = std::fs::read_to_string(&input)?;
+            let transcript = transcript::parse_transcript(&json)?;
+            let document = karaoke::render(&transcript.words, &options)?;
+            let pages = document.dialogues().len();
+            std::fs::write(&output, ass::write(&document)?)?;
+            println!(
+                "wrote {pages} karaoke pages ({}) from {} words to {}",
+                selected.name(),
+                transcript.words.len(),
+                output.display()
+            );
+        }
+        Command::Burn { video, captions, output, encoder, encoder_option, ffmpeg } => {
+            let mut options = BurnOptions { encoder, ..BurnOptions::default() };
+            for option in &encoder_option {
+                options.encoder_options.push(BurnOptions::parse_encoder_option(option)?);
+            }
+            if let Some(ffmpeg) = ffmpeg {
+                options.ffmpeg = ffmpeg;
+            }
+            let arguments = burn::build_args(&video, &captions, &output, &options)?;
+            let status = StdCommand::new(&options.ffmpeg).args(&arguments).status()?;
+            if !status.success() {
+                return Err(Error::FfmpegFailed(status.to_string()));
+            }
+            println!("burned captions into {}", output.display());
         }
     }
     Ok(0)
