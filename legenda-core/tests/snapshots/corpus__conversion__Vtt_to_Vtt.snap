@@ -1,0 +1,12 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: "String :: from_utf8(encoded).unwrap()"
+---
+WEBVTT
+
+00:00:01.000 --> 00:00:03.500
+Primeira linha
+Segunda linha
+
+00:00:04.000 --> 00:00:05.000
+<v João>Olá!</v>

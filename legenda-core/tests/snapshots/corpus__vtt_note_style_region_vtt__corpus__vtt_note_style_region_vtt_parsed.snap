@@ -1,0 +1,41 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Vtt(
+    WebVttDocument {
+        header: [
+            "WEBVTT",
+        ],
+        blocks: [
+            Raw(
+                "NOTE revisado\npor Ana",
+            ),
+            Raw(
+                "STYLE\n::cue { color: yellow; }",
+            ),
+            Raw(
+                "REGION\nid:legendas\nwidth:40%",
+            ),
+            Cue(
+                VttCue {
+                    id: None,
+                    start: Time(
+                        Rational {
+                            num: 1,
+                            den: 1,
+                        },
+                    ),
+                    end: Time(
+                        Rational {
+                            num: 2,
+                            den: 1,
+                        },
+                    ),
+                    settings: "",
+                    text: "Texto",
+                },
+            ),
+        ],
+    },
+)

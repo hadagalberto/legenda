@@ -1,0 +1,26 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Srt(
+    SrtDocument {
+        cues: [
+            SrtCue {
+                index: 1,
+                start: Time(
+                    Rational {
+                        num: 0,
+                        den: 1,
+                    },
+                ),
+                end: Time(
+                    Rational {
+                        num: 1,
+                        den: 1,
+                    },
+                ),
+                text: "BOM",
+            },
+        ],
+    },
+)

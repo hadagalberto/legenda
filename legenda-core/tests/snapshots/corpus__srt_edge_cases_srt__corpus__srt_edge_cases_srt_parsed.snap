@@ -1,0 +1,58 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Srt(
+    SrtDocument {
+        cues: [
+            SrtCue {
+                index: 1,
+                start: Time(
+                    Rational {
+                        num: 1,
+                        den: 2,
+                    },
+                ),
+                end: Time(
+                    Rational {
+                        num: 5,
+                        den: 4,
+                    },
+                ),
+                text: "<b>Primeira</b> sem índice\nlinha dois",
+            },
+            SrtCue {
+                index: 2,
+                start: Time(
+                    Rational {
+                        num: 62,
+                        den: 1,
+                    },
+                ),
+                end: Time(
+                    Rational {
+                        num: 63,
+                        den: 1,
+                    },
+                ),
+                text: "<font color=\"#FF0000\">Vermelho</font>",
+            },
+            SrtCue {
+                index: 9,
+                start: Time(
+                    Rational {
+                        num: 120,
+                        den: 1,
+                    },
+                ),
+                end: Time(
+                    Rational {
+                        num: 121,
+                        den: 1,
+                    },
+                ),
+                text: "Última",
+            },
+        ],
+    },
+)

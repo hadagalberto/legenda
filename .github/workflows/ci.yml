@@ -47,5 +47,9 @@ jobs:
       - name: Test suite
         run: cargo test --workspace --all-targets
 
+      - name: Test suite (release)
+        # Enforces the SPEC performance bound for parse + write of 100k cues.
+        run: cargo test --workspace --release
+
       - name: Release build
         run: cargo build --workspace --release

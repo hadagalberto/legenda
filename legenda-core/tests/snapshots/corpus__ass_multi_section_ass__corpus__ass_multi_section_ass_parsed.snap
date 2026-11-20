@@ -1,0 +1,126 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Ass(
+    AssDocument {
+        sections: [
+            ScriptInfo {
+                lines: [
+                    "ScriptType: v4.00+",
+                    "",
+                ],
+            },
+            Styles {
+                header: "[V4+ Styles]",
+                format: [
+                    "Name",
+                    "Fontname",
+                    "Fontsize",
+                    "PrimaryColour",
+                    "SecondaryColour",
+                    "OutlineColour",
+                    "BackColour",
+                    "Bold",
+                    "Italic",
+                    "Underline",
+                    "StrikeOut",
+                    "ScaleX",
+                    "ScaleY",
+                    "Spacing",
+                    "Angle",
+                    "BorderStyle",
+                    "Outline",
+                    "Shadow",
+                    "Alignment",
+                    "MarginL",
+                    "MarginR",
+                    "MarginV",
+                    "Encoding",
+                ],
+                styles: [
+                    AssStyle {
+                        values: [
+                            "Default",
+                            "Arial",
+                            "20",
+                            "&H00FFFFFF&",
+                            "&H000000FF&",
+                            "&H00000000&",
+                            "&H80000000&",
+                            "0",
+                            "0",
+                            "0",
+                            "0",
+                            "100",
+                            "100",
+                            "0",
+                            "0",
+                            "1",
+                            "2",
+                            "2",
+                            "2",
+                            "10",
+                            "10",
+                            "10",
+                            "1",
+                        ],
+                    },
+                ],
+                comments: [],
+            },
+            Raw {
+                header: "[Graphics]",
+                lines: [
+                    "movie: logo.png,0,0",
+                    "",
+                ],
+            },
+            Raw {
+                header: "[Fonts]",
+                lines: [
+                    "fontname: Arial",
+                    "",
+                ],
+            },
+            Events {
+                format: [
+                    "Layer",
+                    "Start",
+                    "End",
+                    "Style",
+                    "Name",
+                    "MarginL",
+                    "MarginR",
+                    "MarginV",
+                    "Effect",
+                    "Text",
+                ],
+                events: [
+                    AssEvent {
+                        kind: "Dialogue",
+                        values: [
+                            "0",
+                            "0:00:01.00",
+                            "0:00:02.00",
+                            "Default",
+                            "",
+                            "0",
+                            "0",
+                            "0",
+                            "",
+                            "Várias seções",
+                        ],
+                    },
+                ],
+                comments: [],
+            },
+            Raw {
+                header: "[Aegisub Project Garbage]",
+                lines: [
+                    "Last Style Storage: Default",
+                ],
+            },
+        ],
+    },
+)

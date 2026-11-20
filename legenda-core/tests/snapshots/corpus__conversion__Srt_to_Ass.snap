@@ -1,0 +1,18 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: "String :: from_utf8(encoded).unwrap()"
+---
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 384
+PlayResY: 288
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,20,&H00FFFFFF&,&H000000FF&,&H00000000&,&H80000000&,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,00:00:00.50,00:00:01.25,Default,,0,0,0,,{\b1}Primeira{\b0} sem índice\Nlinha dois
+Dialogue: 0,00:01:02.00,00:01:03.00,Default,,0,0,0,,{\c&H000000FF&}Vermelho{\c&H00FFFFFF&}
+Dialogue: 0,00:02:00.00,00:02:01.00,Default,,0,0,0,,Última

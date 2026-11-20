@@ -1,0 +1,78 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Ass(
+    AssDocument {
+        sections: [
+            ScriptInfo {
+                lines: [
+                    "ScriptType: v4.00+",
+                    "",
+                ],
+            },
+            Events {
+                format: [
+                    "Layer",
+                    "Start",
+                    "End",
+                    "Style",
+                    "Name",
+                    "MarginL",
+                    "MarginR",
+                    "MarginV",
+                    "Effect",
+                    "Text",
+                ],
+                events: [
+                    AssEvent {
+                        kind: "Dialogue",
+                        values: [
+                            "0",
+                            "0:00:01.00",
+                            "0:00:03.00",
+                            "Default",
+                            "",
+                            "0",
+                            "0",
+                            "0",
+                            "",
+                            "Sobreposta",
+                        ],
+                    },
+                    AssEvent {
+                        kind: "Dialogue",
+                        values: [
+                            "0",
+                            "0:00:02.00",
+                            "0:00:04.00",
+                            "Default",
+                            "",
+                            "0",
+                            "0",
+                            "0",
+                            "",
+                            "Segunda",
+                        ],
+                    },
+                    AssEvent {
+                        kind: "Dialogue",
+                        values: [
+                            "0",
+                            "0:00:05.00",
+                            "0:00:06.00",
+                            "Default",
+                            "",
+                            "0",
+                            "0",
+                            "0",
+                            "",
+                            "Terceira",
+                        ],
+                    },
+                ],
+                comments: [],
+            },
+        ],
+    },
+)

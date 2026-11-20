@@ -1,0 +1,48 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Ass(
+    AssDocument {
+        sections: [
+            ScriptInfo {
+                lines: [
+                    "ScriptType: v4.00+",
+                    "",
+                ],
+            },
+            Events {
+                format: [
+                    "Layer",
+                    "Start",
+                    "End",
+                    "Style",
+                    "Name",
+                    "MarginL",
+                    "MarginR",
+                    "MarginV",
+                    "Effect",
+                    "Text",
+                ],
+                events: [
+                    AssEvent {
+                        kind: "Dialogue",
+                        values: [
+                            "0",
+                            "0:00:01.5",
+                            "0:00:02.25",
+                            "Default",
+                            "",
+                            "0",
+                            "0",
+                            "0",
+                            "",
+                            "Fração parcial",
+                        ],
+                    },
+                ],
+                comments: [],
+            },
+        ],
+    },
+)

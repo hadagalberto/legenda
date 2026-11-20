@@ -1,0 +1,4 @@
+1
+00:00:01,000 --> 00:00:02,000
+<i>itálico</i> e <b>negrito</b>
+<font color="#00FF00">verde</font>

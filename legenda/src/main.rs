@@ -385,9 +385,13 @@ fn execute() -> Result<i32> {
                 Some(value) => FrameRate::parse(&value)?,
                 None => FrameRate::FPS_24,
             };
-            let children = children || preset == "netflix-ptbr-children";
-            let _preset = Preset::parse(&preset)?;
-            let config = LintConfig::netflix_ptbr(frame_rate, children)?;
+            let selected = Preset::parse(&preset)?;
+            let children = children || selected == Preset::NetflixPtBrChildren;
+            let config = if selected == Preset::Shorts {
+                LintConfig::shorts(frame_rate)?
+            } else {
+                LintConfig::netflix_ptbr(frame_rate, children)?
+            };
             let report = LintReport::new(&subtitle.plain_cues()?, &config);
             if json {
                 println!("{}", report.to_json()?);

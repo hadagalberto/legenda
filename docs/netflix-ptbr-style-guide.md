@@ -2,7 +2,10 @@
 
 The `netflix-ptbr` reflow preset and the `lint` command use the **exact published
 values** from the official Netflix Partner Help Center pages below. No value is
-guessed or inferred.
+guessed or inferred. Both pages were fetched and verified against the tables
+below on 2026-11-20 (the language guide's changelog also confirms the 2022-12-22
+wording "reading speed limits" and the general guide's 2020-07-24 removal of its
+timing/frame-gap section).
 
 ## Primary source (pt-BR language specific)
 

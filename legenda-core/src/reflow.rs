@@ -72,7 +72,11 @@ pub struct ReflowOptions {
 impl ReflowOptions {
     pub fn new(preset: Preset, fps: FrameRate) -> Result<Self> {
         let children = preset == Preset::NetflixPtBrChildren;
-        let lint = LintConfig::netflix_ptbr(fps, children)?;
+        let lint = if preset == Preset::Shorts {
+            LintConfig::shorts(fps)?
+        } else {
+            LintConfig::netflix_ptbr(fps, children)?
+        };
         let (max_lines, max_cps, words_per_page) = match preset {
             Preset::NetflixPtBr | Preset::NetflixPtBrChildren => (2, lint.max_cps, 0),
             Preset::Shorts => (1, Rational::new(20, 1)?, 4),

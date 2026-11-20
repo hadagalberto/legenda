@@ -1,0 +1,8 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: text
+---
+WEBVTT
+
+00:00:01.000 --> 00:00:02.000
+Ação, coração, página €

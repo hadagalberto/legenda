@@ -1,0 +1,6 @@
+[Script Info]
+ScriptType: v4.00+
+
+[Events]
+Format: Layer, Start, End, Style, Effect, Name, MarginV, MarginL, MarginR, Text
+Dialogue: 0,0:00:01.00,0:00:02.00,Default,efeito,Nome,30,10,20,Texto reordenado

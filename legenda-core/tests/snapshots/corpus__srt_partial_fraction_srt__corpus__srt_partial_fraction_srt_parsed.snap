@@ -1,0 +1,26 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Srt(
+    SrtDocument {
+        cues: [
+            SrtCue {
+                index: 1,
+                start: Time(
+                    Rational {
+                        num: 3,
+                        den: 2,
+                    },
+                ),
+                end: Time(
+                    Rational {
+                        num: 9,
+                        den: 4,
+                    },
+                ),
+                text: "Fração parcial",
+            },
+        ],
+    },
+)

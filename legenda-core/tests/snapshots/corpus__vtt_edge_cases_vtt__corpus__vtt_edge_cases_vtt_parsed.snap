@@ -1,0 +1,61 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Vtt(
+    WebVttDocument {
+        header: [
+            "WEBVTT - versão de teste",
+            "Kind: captions",
+            "Language: pt-BR",
+        ],
+        blocks: [
+            Raw(
+                "NOTE conferido por Maria\nmantido propose",
+            ),
+            Raw(
+                "STYLE\n::cue { color: lime; }",
+            ),
+            Cue(
+                VttCue {
+                    id: Some(
+                        "intro",
+                    ),
+                    start: Time(
+                        Rational {
+                            num: 1,
+                            den: 1,
+                        },
+                    ),
+                    end: Time(
+                        Rational {
+                            num: 7,
+                            den: 2,
+                        },
+                    ),
+                    settings: "position:50%",
+                    text: "Primeira linha\nSegunda linha",
+                },
+            ),
+            Cue(
+                VttCue {
+                    id: None,
+                    start: Time(
+                        Rational {
+                            num: 4,
+                            den: 1,
+                        },
+                    ),
+                    end: Time(
+                        Rational {
+                            num: 5,
+                            den: 1,
+                        },
+                    ),
+                    settings: "align:end",
+                    text: "<v João>Olá!</v>",
+                },
+            ),
+        ],
+    },
+)

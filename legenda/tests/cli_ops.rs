@@ -200,6 +200,21 @@ fn lint_exit_codes_and_json_report() {
 }
 
 #[test]
+fn lint_shorts_preset_uses_its_own_limits() {
+    let directory = temp_dir();
+    let input = directory.join("shorts.srt");
+    // Two lines are fine for Netflix pt-BR but violate the shorts preset.
+    std::fs::write(&input, "1\n00:00:01,000 --> 00:00:04,000\nlinha um\nlinha dois\n").unwrap();
+
+    let netflix = run(&["lint", input.to_str().unwrap(), "--json"]);
+    assert_eq!(netflix.status.code(), Some(0));
+    let shorts = run(&["lint", input.to_str().unwrap(), "--json", "--preset", "shorts"]);
+    assert_eq!(shorts.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&shorts.stdout).unwrap();
+    assert_eq!(report["by_rule"]["too_many_lines"], 1);
+}
+
+#[test]
 fn reflow_command_enforces_preset_limits() {
     let directory = temp_dir();
     let input = directory.join("in.srt");

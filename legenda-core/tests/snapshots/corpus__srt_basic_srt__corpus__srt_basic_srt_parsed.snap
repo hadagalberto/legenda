@@ -1,0 +1,42 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Srt(
+    SrtDocument {
+        cues: [
+            SrtCue {
+                index: 1,
+                start: Time(
+                    Rational {
+                        num: 1,
+                        den: 1,
+                    },
+                ),
+                end: Time(
+                    Rational {
+                        num: 16,
+                        den: 5,
+                    },
+                ),
+                text: "Olá, mundo!",
+            },
+            SrtCue {
+                index: 2,
+                start: Time(
+                    Rational {
+                        num: 17,
+                        den: 5,
+                    },
+                ),
+                end: Time(
+                    Rational {
+                        num: 5,
+                        den: 1,
+                    },
+                ),
+                text: "Segunda linha com <i>ênfase</i>.",
+            },
+        ],
+    },
+)

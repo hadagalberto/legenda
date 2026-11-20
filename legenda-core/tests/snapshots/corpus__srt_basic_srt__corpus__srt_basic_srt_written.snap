@@ -1,0 +1,11 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: text
+---
+1
+00:00:01,000 --> 00:00:03,200
+Olá, mundo!
+
+2
+00:00:03,400 --> 00:00:05,000
+Segunda linha com <i>ênfase</i>.

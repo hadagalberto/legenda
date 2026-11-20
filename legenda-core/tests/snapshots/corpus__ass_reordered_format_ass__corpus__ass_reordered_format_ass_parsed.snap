@@ -1,0 +1,48 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Ass(
+    AssDocument {
+        sections: [
+            ScriptInfo {
+                lines: [
+                    "ScriptType: v4.00+",
+                    "",
+                ],
+            },
+            Events {
+                format: [
+                    "Layer",
+                    "Start",
+                    "End",
+                    "Style",
+                    "Effect",
+                    "Name",
+                    "MarginV",
+                    "MarginL",
+                    "MarginR",
+                    "Text",
+                ],
+                events: [
+                    AssEvent {
+                        kind: "Dialogue",
+                        values: [
+                            "0",
+                            "0:00:01.00",
+                            "0:00:02.00",
+                            "Default",
+                            "efeito",
+                            "Nome",
+                            "30",
+                            "10",
+                            "20",
+                            "Texto reordenado",
+                        ],
+                    },
+                ],
+                comments: [],
+            },
+        ],
+    },
+)

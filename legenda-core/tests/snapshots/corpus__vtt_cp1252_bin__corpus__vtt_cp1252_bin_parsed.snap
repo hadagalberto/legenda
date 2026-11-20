@@ -1,0 +1,32 @@
+---
+source: legenda-core/tests/corpus.rs
+expression: document
+---
+Vtt(
+    WebVttDocument {
+        header: [
+            "WEBVTT",
+        ],
+        blocks: [
+            Cue(
+                VttCue {
+                    id: None,
+                    start: Time(
+                        Rational {
+                            num: 1,
+                            den: 1,
+                        },
+                    ),
+                    end: Time(
+                        Rational {
+                            num: 2,
+                            den: 1,
+                        },
+                    ),
+                    settings: "",
+                    text: "Ação, coração, página €",
+                },
+            ),
+        ],
+    },
+)

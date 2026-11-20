@@ -1,4 +1,11 @@
 * text=auto eol=lf
 
-# Binary fixtures must keep their exact bytes (CRLF, UTF-16 BOM, cp1252).
-*.bin -text
+# Byte-exact fixtures: CR-only line endings, UTF-8/UTF-16 BOMs and
+# windows-1252 bytes must survive checkouts on every platform unchanged.
+# Without these rules a Windows CRLF checkout would rewrite the input and the
+# tolerant-parser snapshots would no longer describe the committed bytes.
+legenda-core/tests/fixtures/*.bin binary
+legenda-core/tests/fixtures/*_bom.* binary
+legenda-core/tests/fixtures/*_cr_only.* binary
+legenda-core/tests/fixtures/*cp1252* binary
+legenda-core/tests/fixtures/*utf16* binary

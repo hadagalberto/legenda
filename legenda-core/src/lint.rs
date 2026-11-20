@@ -81,6 +81,21 @@ impl LintConfig {
             min_gap: fps.frame_duration(2)?,
         })
     }
+
+    /// Vertical-shorts values matching the `shorts` reflow preset: one line,
+    /// at most 34 characters and 20 CPS. Duration limits and the two-frame gap
+    /// stay at the Netflix baseline so the same checks apply to both workflows.
+    pub fn shorts(fps: FrameRate) -> Result<Self> {
+        Ok(Self {
+            fps,
+            max_chars_per_line: 34,
+            max_lines: 1,
+            max_cps: Rational::new(20, 1)?,
+            min_duration: Rational::new(5, 6).map(Time::from_rational_seconds)?,
+            max_duration: Time::from_rational_seconds(Rational::from_int(7)),
+            min_gap: fps.frame_duration(2)?,
+        })
+    }
 }
 
 fn issue(
@@ -300,6 +315,18 @@ mod tests {
             .unwrap()
             .iter()
             .any(|item| item["rule"] == "line_length"));
+    }
+
+    #[test]
+    fn shorts_config_matches_the_shorts_reflow_preset() {
+        let config = LintConfig::shorts(FrameRate::FPS_24).unwrap();
+        assert_eq!(config.max_lines, 1);
+        assert_eq!(config.max_chars_per_line, 34);
+        assert_eq!(config.max_cps, Rational::new(20, 1).unwrap());
+        assert_eq!(config.min_gap, FrameRate::FPS_24.frame_duration(2).unwrap());
+
+        let two_lines = LintReport::new(&[cue(1_000, 4_000, "linha um\nlinha dois")], &config);
+        assert!(two_lines.issues.iter().any(|item| item.rule == LintRule::TooManyLines));
     }
 
     #[test]
