@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use crate::ass::{self, AssDocument};
-use crate::convert::{ass_from_plain, ass_to_plain_text};
+use crate::ass::{self, AssDocument, AssSection};
+use crate::convert::{ass_from_plain, ass_to_plain_text, plain_to_ass_text};
 use crate::encoding;
 use crate::error::{Error, Result};
 use crate::srt::{self, SrtDocument};
@@ -115,6 +115,75 @@ impl Subtitle {
         }
     }
 
+    /// Replaces the timing and text of every cue while preserving the
+    /// document's format-specific structure (SRT indices, WebVTT ids/settings
+    /// and raw NOTE/STYLE blocks, ASS styles and non-dialogue events).
+    ///
+    /// ASS override markup is converted to neutral markup on read by
+    /// [`Subtitle::plain_cues`] and rebuilt from neutral markup here; unknown
+    /// ASS overrides are therefore not retained by edit operations.
+    pub fn replace_plain_cues(&mut self, cues: &[PlainCue]) -> Result<()> {
+        match self {
+            Self::Srt(document) => {
+                check_count(document.cues.len(), cues.len())?;
+                for (target, source) in document.cues.iter_mut().zip(cues) {
+                    target.start = source.start;
+                    target.end = source.end;
+                    target.text.clone_from(&source.text);
+                }
+            }
+            Self::Vtt(document) => {
+                let count = document
+                    .blocks
+                    .iter()
+                    .filter(|block| matches!(block, VttBlock::Cue(_)))
+                    .count();
+                check_count(count, cues.len())?;
+                let mut source = cues.iter();
+                for block in &mut document.blocks {
+                    if let VttBlock::Cue(cue) = block {
+                        if let Some(next) = source.next() {
+                            cue.start = next.start;
+                            cue.end = next.end;
+                            cue.text.clone_from(&next.text);
+                        }
+                    }
+                }
+            }
+            Self::Ass(document) => {
+                let dialogue_count = document.dialogues().len();
+                check_count(dialogue_count, cues.len())?;
+                let mut cursor = cues.iter();
+                for section in &mut document.sections {
+                    let AssSection::Events { format, events, .. } = section else {
+                        continue;
+                    };
+                    let start_index =
+                        format.iter().position(|name| name.eq_ignore_ascii_case("Start"));
+                    let end_index = format.iter().position(|name| name.eq_ignore_ascii_case("End"));
+                    let text_index =
+                        format.iter().position(|name| name.eq_ignore_ascii_case("Text"));
+                    let (Some(start_index), Some(end_index), Some(text_index)) =
+                        (start_index, end_index, text_index)
+                    else {
+                        continue;
+                    };
+                    for event in events.iter_mut() {
+                        if !event.kind.eq_ignore_ascii_case("Dialogue") {
+                            continue;
+                        }
+                        if let Some(next) = cursor.next() {
+                            set_field(event, start_index, next.start.format_ass());
+                            set_field(event, end_index, next.end.format_ass());
+                            set_field(event, text_index, plain_to_ass_text(&next.text));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn plain_cues(&self) -> Result<Vec<PlainCue>> {
         Ok(match self {
             Self::Srt(document) => document
@@ -177,5 +246,19 @@ impl Subtitle {
             }),
             Format::Ass => Self::Ass(ass_from_plain(cues)),
         })
+    }
+}
+
+fn check_count(expected: usize, actual: usize) -> Result<()> {
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(Error::CueCountMismatch { expected, actual })
+    }
+}
+
+fn set_field(event: &mut crate::ass::AssEvent, index: usize, value: String) {
+    if let Some(field) = event.values.get_mut(index) {
+        *field = value;
     }
 }

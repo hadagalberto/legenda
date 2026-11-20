@@ -27,6 +27,38 @@ pub enum Error {
     #[error("missing ASS field {field:?} in {kind} line")]
     MissingAssField { field: &'static str, kind: String },
 
+    /// A merge was requested without any input documents.
+    #[error("merge requires at least one input document")]
+    EmptyMerge,
+
+    /// An operation expected a different number of cues than the document has.
+    #[error("cue count mismatch: expected {expected}, found {actual}")]
+    CueCountMismatch { expected: usize, actual: usize },
+
+    /// A frame-rate name or ratio could not be interpreted.
+    #[error("invalid frame rate: {0}")]
+    InvalidFrameRate(String),
+
+    /// The two reference points of a two-point sync are identical.
+    #[error("two-point sync requires two distinct source timestamps")]
+    DegenerateSync,
+
+    /// A free-form CLI time expression could not be interpreted.
+    #[error("invalid time expression {input:?}: {reason}")]
+    InvalidTimeExpression { input: String, reason: &'static str },
+
+    /// A reflow preset name is unknown.
+    #[error("unknown reflow preset: {0}")]
+    UnknownPreset(String),
+
+    /// A split boundary lies outside the subtitle's cue range.
+    #[error("split boundary out of range: index {index}, cue count {count}")]
+    SplitOutOfRange { index: usize, count: usize },
+
+    /// JSON serialisation failed.
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
     /// Wraps an underlying I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
