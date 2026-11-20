@@ -214,6 +214,9 @@ enum Command {
         /// Pause in milliseconds that starts a new page (default 300).
         #[arg(long)]
         pause_ms: Option<u64>,
+        /// Maximum gap in milliseconds closed between pages (default 300).
+        #[arg(long)]
+        page_gap_ms: Option<u64>,
     },
     /// Burn ASS captions into a video with ffmpeg.
     Burn {
@@ -433,6 +436,7 @@ fn execute() -> Result<i32> {
             words_per_page,
             max_chars,
             pause_ms,
+            page_gap_ms,
         } => {
             let selected = KaraokePreset::parse(&preset)?;
             let mut options = KaraokeOptions::new(selected);
@@ -481,6 +485,9 @@ fn execute() -> Result<i32> {
             if let Some(millis) = pause_ms {
                 options.page.pause_threshold = Time::from_millis(millis as i64);
             }
+            if let Some(millis) = page_gap_ms {
+                options.page_gap_threshold = Time::from_millis(millis as i64);
+            }
             options.emphasis = emphasis;
             let json = std::fs::read_to_string(&input)?;
             let transcript = transcript::parse_transcript(&json)?;
@@ -502,8 +509,10 @@ fn execute() -> Result<i32> {
             if let Some(ffmpeg) = ffmpeg {
                 options.ffmpeg = ffmpeg;
             }
-            let arguments = burn::build_args(&video, &captions, &output, &options)?;
-            let status = StdCommand::new(&options.ffmpeg).args(&arguments).status()?;
+            // Keep the invocation alive until ffmpeg exits: it owns the
+            // temporary, safely named copy of the caption file.
+            let invocation = burn::build_args(&video, &captions, &output, &options)?;
+            let status = StdCommand::new(&options.ffmpeg).args(invocation.args()).status()?;
             if !status.success() {
                 return Err(Error::FfmpegFailed(status.to_string()));
             }

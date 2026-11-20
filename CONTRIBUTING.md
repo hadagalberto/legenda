@@ -74,8 +74,10 @@ The CI matrix runs Ubuntu, Windows and macOS. Every step in
   formatting, no `TextDecoder`-style label tables, no host timezone, and no
   assumptions about path separators or line endings. Normalise input in the
   parser (`text_util::normalize_newlines`) and use `/` in ffmpeg filter paths.
-- Paths in tests are built with `Path::join`; UTF-8 paths are used for ffmpeg
-  filter expressions and metacharacters are escaped by `burn::escape_filter_path`.
+- Paths in tests are built with `Path::join`; the burn e2e test deliberately
+  uses filtergraph metacharacters, spaces and accents in every path component
+  on all three OSes. `burn::build_args` copies the caption file to a safe
+  temporary name, while `video` and `output` stay verbatim argv elements.
 - The e2e burn test generates its video with ffmpeg `lavfi` and asserts the
   output duration with ffprobe; it never assumes a pre-existing media file.
 

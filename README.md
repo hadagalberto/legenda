@@ -98,9 +98,10 @@ within their segment. Presets: `hormozi` (bold uppercase + accent pop),
 `clean` (soft reveal on a subtle box), `karaoke` (`\k` fill) and `bounce`
 (overshoot-and-settle). Emoji pass through untouched; braces are escaped.
 
-Paths are escaped for the ffmpeg `subtitles=` filter, including Windows drive
-colons and filtergraph metacharacters (` , ; [ ] '`), so the recipe works on
-Linux, macOS and Windows.
+The caption file is copied to a temporary ASCII-only name before burning, so
+filtergraph metacharacters in your paths (`, ; [ ] '`), spaces and accents never
+reach ffmpeg's two-level escaping. Video and output paths are passed verbatim.
+Works on Linux, macOS and Windows.
 
 ## Recipe: Netflix-style reflow
 

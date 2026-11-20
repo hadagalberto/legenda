@@ -9,10 +9,23 @@ use legenda_core::{ass, Format, Subtitle};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// Every path component is hostile to ffmpeg filtergraph parsing: commas,
+/// brackets, semicolons, `#`, apostrophes, spaces and accents. On non-Windows
+/// hosts an extra `C:\...`-shaped component is added so drive letters are
+/// exercised there too; on Windows the drive comes from `temp_dir()` itself.
 fn temp_dir(name: &str) -> PathBuf {
     let sequence = COUNTER.fetch_add(1, Ordering::SeqCst);
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let directory = std::env::temp_dir().join(format!("legenda-{name}-{nanos}-{sequence}"));
+    let mut directory =
+        std::env::temp_dir().join(format!("legenda-{name}, [e2e]; #1's çã {nanos}-{sequence}"));
+    if cfg!(windows) {
+        assert!(
+            directory.to_string_lossy().contains(":\\"),
+            "Windows temp directory must contain a drive letter"
+        );
+    } else {
+        directory = directory.join(r"C:\unidade çã");
+    }
     std::fs::create_dir_all(&directory).unwrap();
     directory
 }
@@ -125,11 +138,9 @@ fn karaoke_command_rejects_invalid_options() {
 
 #[test]
 fn burn_embeds_captions_into_generated_video() {
-    let directory = temp_dir("burn, [e2e]; #1's");
-    let video = directory.join("input.mp4");
-    let transcript = directory.join("transcript.json");
-    let captions = directory.join("captions, [burn]; #1's.ass");
-    let output = directory.join("output.mp4");
+    let directory = temp_dir("burn");
+    let video = directory.join("input, [v]; #2's çã.mp4");
+    let transcript = directory.join("transcript, [json]; #3's çã.json");
     write_transcript(&transcript);
 
     let generate = Command::new("ffmpeg")
@@ -152,43 +163,52 @@ fn burn_embeds_captions_into_generated_video() {
         .expect("ffmpeg must be installed for the burn e2e test");
     assert!(generate.success(), "failed to generate the fixture video");
 
-    let karaoke = run(&[
-        "karaoke",
-        transcript.to_str().unwrap(),
-        "-o",
-        captions.to_str().unwrap(),
-        "--preset",
-        "hormozi",
-    ]);
-    assert!(karaoke.status.success(), "{}", String::from_utf8_lossy(&karaoke.stderr));
+    // Same hostile names on every OS, plus spaces and accents. The output
+    // name is adversarial too: it is a plain argv element and must survive
+    // byte-for-byte.
+    for caption_name in
+        ["captions, [burn]; #1's.ass", "legendas com espaços çã.ass", "caps[1],;#'s.ass"]
+    {
+        let captions = directory.join(caption_name);
+        let output = directory.join(format!("output, [{caption_name}]; #4's çã.mp4"));
+        let karaoke = run(&[
+            "karaoke",
+            transcript.to_str().unwrap(),
+            "-o",
+            captions.to_str().unwrap(),
+            "--preset",
+            "hormozi",
+        ]);
+        assert!(karaoke.status.success(), "{}", String::from_utf8_lossy(&karaoke.stderr));
 
-    let result = run(&[
-        "burn",
-        video.to_str().unwrap(),
-        captions.to_str().unwrap(),
-        "-o",
-        output.to_str().unwrap(),
-        "--encoder-option",
-        "crf=28",
-    ]);
-    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
-    assert!(output.exists());
+        let result = run(&[
+            "burn",
+            video.to_str().unwrap(),
+            captions.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+            "--encoder-option",
+            "crf=28",
+        ]);
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        assert!(output.exists(), "output {output:?} was not created");
 
-    let probe = Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-        ])
-        .arg(&output)
-        .output()
-        .expect("ffprobe must be installed for the burn e2e test");
-    assert!(probe.status.success(), "{}", String::from_utf8_lossy(&probe.stderr));
-    let duration: f64 = String::from_utf8_lossy(&probe.stdout).trim().parse().unwrap();
-    assert!((duration - 1.0).abs() < 0.25, "unexpected output duration {duration}");
+        let probe = Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+            ])
+            .arg(&output)
+            .output()
+            .expect("ffprobe must be installed for the burn e2e test");
+        assert!(probe.status.success(), "{}", String::from_utf8_lossy(&probe.stderr));
+        let duration: f64 = String::from_utf8_lossy(&probe.stdout).trim().parse().unwrap();
+        assert!((duration - 1.0).abs() < 0.25, "unexpected output duration {duration}");
+    }
 }
 
 #[test]

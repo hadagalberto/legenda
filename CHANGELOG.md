@@ -22,6 +22,19 @@ All notable changes to this project are documented here. The format follows
     RGB frames at every word midpoint and checks both the highlight colour and
     the left/right 2% safe-area edges.
 
+### Fixed
+
+- **Maintainer fix pass (milestone 6)**
+  - `legenda burn` no longer puts user caption paths in the ffmpeg
+    filtergraph. The ASS file is copied to a uniquely named ASCII-only
+    temporary file and referenced with `subtitles=filename=...`, so commas,
+    brackets, semicolons, apostrophes, spaces, accents and drive letters can
+    no longer break two-level filtergraph escaping (the macOS CI failure).
+    Video and output paths remain verbatim argv elements.
+  - Consecutive karaoke pages closer than 300 ms (`--page-gap-ms`) are now
+    extended to the next page's start, removing the caption blink between
+    pages produced by width-aware layout splitting.
+
 ## [0.1.0] — 2026-11-20
 
 First public release: a single-binary CLI and library for creators' subtitles.

@@ -19,6 +19,11 @@ use crate::transcript::{group_pages, Page, PageOptions, Word};
 /// milliseconds relative to the start of the Dialogue line.
 const POP_MS: i64 = 80;
 
+/// Gaps below this value between consecutive caption pages are closed by
+/// extending the earlier page to the later page's start. Leaving a 40-60 ms
+/// hole makes the subtitles blink between pages.
+pub const DEFAULT_PAGE_GAP_MS: u64 = 300;
+
 /// Largest scale reached during the pop-in (115%).
 const POP_SCALE: f64 = 1.15;
 
@@ -255,6 +260,8 @@ pub struct KaraokeOptions {
     /// `emphasis_color` with a stronger animation.
     pub emphasis: Vec<String>,
     pub page: PageOptions,
+    /// Gaps shorter than this are closed so consecutive pages never blink.
+    pub page_gap_threshold: Time,
 }
 
 impl KaraokeOptions {
@@ -276,6 +283,7 @@ impl KaraokeOptions {
             // Large vertical-shorts captions: 3-4 words per page, then the
             // width-aware layout below splits that into at most two lines.
             page: PageOptions { max_words: 4, ..PageOptions::default() },
+            page_gap_threshold: Time::from_millis(DEFAULT_PAGE_GAP_MS as i64),
         }
     }
 
@@ -377,11 +385,27 @@ fn flush_line<'a>(
     lines.push(line);
 }
 
+/// Extends a page's end to the next page's start when the gap is smaller than
+/// `threshold`. Word-level highlight timing is untouched: only the Dialogue
+/// lifetime grows, so the earlier caption stays visible through a short pause
+/// instead of blinking off for a frame or two.
+fn close_page_gaps(layouts: &mut [LayoutPage<'_>], threshold: Time) {
+    let limit = threshold.as_rational();
+    for index in 0..layouts.len().saturating_sub(1) {
+        let next_start = layouts[index + 1].start;
+        let gap = next_start.as_rational() - layouts[index].end.as_rational();
+        if gap > Rational::ZERO && gap < limit {
+            layouts[index].end = next_start;
+        }
+    }
+}
+
 /// Builds an ASS document from a word stream using `options`.
 pub fn render(words: &[Word], options: &KaraokeOptions) -> Result<AssDocument> {
     let style = preset_style(options.preset);
     let pages = group_pages(words, &options.page);
-    let layouts = layout_pages(&pages, options, &style);
+    let mut layouts = layout_pages(&pages, options, &style);
+    close_page_gaps(&mut layouts, options.page_gap_threshold);
     let emphasis: HashSet<String> =
         options.emphasis.iter().filter_map(|word| normalise_word(word)).collect();
 
@@ -688,5 +712,44 @@ mod tests {
     fn available_width_subtracts_both_safe_margins() {
         let options = KaraokeOptions::new(KaraokePreset::Hormozi);
         assert_eq!(available_width(&options), 920.0);
+    }
+
+    #[test]
+    fn close_page_gaps_extends_only_small_positive_gaps() {
+        let a = Word {
+            text: "a".to_owned(),
+            start: Time::from_millis(0),
+            end: Time::from_millis(1_660),
+            score: None,
+        };
+        let b = Word {
+            text: "b".to_owned(),
+            start: Time::from_millis(1_720),
+            end: Time::from_millis(2_000),
+            score: None,
+        };
+        let c = Word {
+            text: "c".to_owned(),
+            start: Time::from_millis(2_500),
+            end: Time::from_millis(2_800),
+            score: None,
+        };
+        let mut layouts = vec![
+            LayoutPage { start: a.start, end: a.end, lines: vec![vec![&a]] },
+            LayoutPage { start: b.start, end: b.end, lines: vec![vec![&b]] },
+            LayoutPage { start: c.start, end: c.end, lines: vec![vec![&c]] },
+        ];
+        close_page_gaps(&mut layouts, Time::from_millis(DEFAULT_PAGE_GAP_MS as i64));
+        assert_eq!(layouts[0].end, Time::from_millis(1_720), "60 ms gap is closed");
+        assert_eq!(layouts[1].end, Time::from_millis(2_000), "500 ms gap is left alone");
+        assert_eq!(layouts[2].end, Time::from_millis(2_800), "last page is never extended");
+
+        // A zero threshold disables the behaviour entirely.
+        let mut layouts = vec![
+            LayoutPage { start: a.start, end: a.end, lines: vec![vec![&a]] },
+            LayoutPage { start: b.start, end: b.end, lines: vec![vec![&b]] },
+        ];
+        close_page_gaps(&mut layouts, Time::ZERO);
+        assert_eq!(layouts[0].end, Time::from_millis(1_660));
     }
 }

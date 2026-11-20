@@ -339,6 +339,41 @@ fn rendered_ass_reparses_with_one_dialogue_per_page() {
 }
 
 #[test]
+fn sub_threshold_page_gaps_are_closed_without_blinking() {
+    // Page one holds four words spaced 60 ms apart; page two starts 60 ms
+    // after page one ends. Without gap closing, the captions blink twice.
+    let words = vec![
+        timed("hoje", 0, 340),
+        timed("eu", 400, 740),
+        timed("vou", 800, 1_140),
+        timed("te", 1_200, 1_540),
+        timed("mostrar", 1_600, 1_940),
+    ];
+    let options = KaraokeOptions::new(KaraokePreset::Hormozi);
+    let document = render(&words, &options).unwrap();
+    let reparsed = ass::parse(&ass::write(&document).unwrap()).unwrap();
+    let dialogues = reparsed.dialogues();
+    assert!(dialogues.len() >= 2, "expected at least two pages, got {}", dialogues.len());
+    for pair in dialogues.windows(2) {
+        let (format_a, event_a) = pair[0];
+        let (format_b, event_b) = pair[1];
+        let end = event_a.end(format_a).unwrap();
+        let start = event_b.start(format_b).unwrap();
+        assert_eq!(end, start, "consecutive pages must be contiguous, found {end} -> {start}");
+    }
+    assert_eq!(dialogues[0].1.end(dialogues[0].0).unwrap(), Time::from_millis(1_600));
+
+    // Disabling the threshold keeps the original 60 ms hole.
+    let mut disabled = KaraokeOptions::new(KaraokePreset::Hormozi);
+    disabled.page_gap_threshold = Time::ZERO;
+    let reparsed = ass::parse(&ass::write(&render(&words, &disabled).unwrap()).unwrap()).unwrap();
+    assert_eq!(
+        reparsed.dialogues()[0].1.end(reparsed.dialogues()[0].0).unwrap(),
+        Time::from_millis(1_540)
+    );
+}
+
+#[test]
 fn override_markup_is_escaped_and_emoji_passes_through() {
     let words = vec![Word {
         text: "a {\\b1}b 👋".to_owned(),

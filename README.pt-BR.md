@@ -99,9 +99,10 @@ com destaque colorido), `clean` (revelação suave sobre caixa sutil), `karaoke`
 (preenchimento `\k`) e `bounce` (salto com amortecimento). Emojis passam
 intactos; chaves são escapadas.
 
-Caminhos são escapados para o filtro `subtitles=` do ffmpeg, incluindo a
-barra do drive no Windows e metacaracteres do filtro (`, ; [ ] '`), então a
-receita funciona em Linux, macOS e Windows.
+O arquivo de legendas é copiado para um nome temporário ASCII antes da queima,
+então metacaracteres de filtro (`, ; [ ] '`), espaços e acentos nos caminhos
+nunca chegam ao escape de dois níveis do ffmpeg. Os caminhos de vídeo e saída
+são passados literalmente. Funciona em Linux, macOS e Windows.
 
 ## Receita: reflow no estilo Netflix
 
