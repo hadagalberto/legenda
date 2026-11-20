@@ -1,0 +1,15 @@
+---
+source: legenda-core/tests/formats.rs
+expression: "String::from_utf8(vtt_bytes).unwrap()"
+---
+WEBVTT
+
+00:00:00.500 --> 00:00:01.250
+<b>Primeira</b> sem índice
+linha dois
+
+00:01:02.000 --> 00:01:03.000
+<font color="#FF0000">Vermelho</font>
+
+00:02:00.000 --> 00:02:01.000
+Última

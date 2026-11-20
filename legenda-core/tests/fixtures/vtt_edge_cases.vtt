@@ -1,0 +1,17 @@
+WEBVTT - versão de teste
+Kind: captions
+Language: pt-BR
+
+NOTE conferido por Maria
+mantido propose
+
+STYLE
+::cue { color: lime; }
+
+intro
+00:01.000 --> 00:03.500 position:50%
+Primeira linha
+Segunda linha
+
+00:00:04.000 --> 00:00:05.000 align:end
+<v João>Olá!</v>

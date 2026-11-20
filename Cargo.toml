@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["legenda-core", "legenda"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Hadagalberto Junior"]
+rust-version = "1.85"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
